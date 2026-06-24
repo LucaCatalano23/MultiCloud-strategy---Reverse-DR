@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reverse-dr-app
+  namespace: reverse-dr
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: reverse-dr-app }
+  template:
+    metadata:
+      labels: { app: reverse-dr-app, mode: island }
+    spec:
+      containers:
+        - name: app
+          image: "{{ app_image }}"
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8080 }]
+          env:
+            - { name: APP_MODE, value: island }
+            - { name: DATABASE_HOST, value: postgres.reverse-dr.svc.cluster.local }
+            - { name: DATABASE_PORT, value: "5432" }
+            - { name: DATABASE_NAME, valueFrom: { secretKeyRef: { name: reverse-dr-secrets, key: DR_DB_NAME } } }
+            - { name: DATABASE_USER, valueFrom: { secretKeyRef: { name: reverse-dr-secrets, key: DR_DB_USER } } }
+            - { name: DATABASE_PASSWORD, valueFrom: { secretKeyRef: { name: reverse-dr-secrets, key: DR_DB_PASSWORD } } }
+            - { name: OBJECT_STORAGE_ENDPOINT, value: http://minio.reverse-dr.svc.cluster.local:9000 }
+            - { name: OBJECT_STORAGE_BUCKET, value: reverse-dr }
+            - { name: OBJECT_STORAGE_ACCESS_KEY, valueFrom: { secretKeyRef: { name: reverse-dr-secrets, key: MINIO_ROOT_USER } } }
+            - { name: OBJECT_STORAGE_SECRET_KEY, valueFrom: { secretKeyRef: { name: reverse-dr-secrets, key: MINIO_ROOT_PASSWORD } } }
+            - { name: OBJECT_STORAGE_REGION, value: eu-west-1 }
+            - { name: IDP_PROVIDER, valueFrom: { configMapKeyRef: { name: identity-provider-active, key: IDP_PROVIDER } } }
+            - { name: IDP_ISSUER_URL, valueFrom: { configMapKeyRef: { name: identity-provider-active, key: IDP_ISSUER_URL } } }
+            - { name: IDP_CLIENT_ID, valueFrom: { secretKeyRef: { name: identity-provider-credentials, key: IDP_CLIENT_ID } } }
+            - { name: IDP_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: identity-provider-credentials, key: IDP_CLIENT_SECRET } } }
+            - { name: HTTP_PROXY, value: http://172.28.30.253:3128 }
+            - { name: HTTPS_PROXY, value: http://172.28.30.253:3128 }
+            - { name: NO_PROXY, value: ".reverse-dr.svc.cluster.local,.svc,.cluster.local,172.28.30.20,127.0.0.1,localhost" }
+          readinessProbe:
+            httpGet: { path: /ready, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /health, port: 8080 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reverse-dr-app
+  namespace: reverse-dr
+spec:
+  selector: { app: reverse-dr-app }
+  ports: [{ port: 80, targetPort: 8080 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: reverse-dr-app
+  namespace: reverse-dr
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: app.reverse-dr.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: reverse-dr-app
+                port:
+                  number: 80

@@ -1,0 +1,14 @@
+reverse-dr.local:53 {
+    file /var/lib/gslb/db.reverse-dr.local {
+        reload 2s
+    }
+    log
+    errors
+}
+
+.:53 {
+    # Le query esterne attraversano il piano DNS del boundary router.
+    forward . 172.28.10.252
+    cache 30
+    errors
+}
