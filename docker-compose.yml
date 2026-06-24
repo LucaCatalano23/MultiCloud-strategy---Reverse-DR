@@ -15,23 +15,8 @@ services:
         ipv4_address: 172.28.10.254
       rete-dmz:
         ipv4_address: 172.28.20.254
-      rete-transito-cloud: #NON DOVREBBE ESSERCI
     depends_on:
       - datacenter-router
-
-  datacenter-router:
-    image: nginx:1.27-alpine
-    container_name: datacenter-router
-    restart: unless-stopped
-    volumes:
-      - ./automazione/datacenter-router/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./automazione/datacenter-router/conf.d:/etc/nginx/conf.d:ro
-    networks:
-      rete-dmz:
-        ipv4_address: 172.28.20.253
-      rete-datacenter:
-        ipv4_address: 172.28.30.254
-      # DOVREBBE ESSERCI LA RETE-TRANISTO-CLOUD
 
   boundary-router-egress:
     build:
@@ -47,6 +32,20 @@ services:
       rete-dmz:
         ipv4_address: 172.28.20.252
       rete-transito-cloud:
+
+  datacenter-router:
+    image: nginx:1.27-alpine
+    container_name: datacenter-router
+    restart: unless-stopped
+    volumes:
+      - ./automazione/datacenter-router/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./automazione/datacenter-router/conf.d:/etc/nginx/conf.d:ro
+    networks:
+      rete-dmz:
+        ipv4_address: 172.28.20.253
+      rete-datacenter:
+        ipv4_address: 172.28.30.254
+      # DOVREBBE ESSERCI LA RETE-TRANISTO-CLOUD
 
   datacenter-router-egress:
     build:
@@ -246,49 +245,27 @@ services:
       gitea:
         condition: service_healthy
 
-  keycloak-db:
-    image: postgres:16-alpine
-    container_name: keycloak-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: keycloak
-      POSTGRES_USER: keycloak
-      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-${KEYCLOAK_ADMIN_PASSWORD:?Definire KEYCLOAK_DB_PASSWORD nel file .env}}
-    volumes:
-      - keycloak-db-data:/var/lib/postgresql/data
-    networks:
-      - rete-datacenter
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-
   keycloak:
-    image: quay.io/keycloak/keycloak:26.0.7
+    image: alpine/socat
     container_name: keycloak
     restart: unless-stopped
-    command: ["start-dev", "--health-enabled=true"]
     environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Definire KEYCLOAK_ADMIN_PASSWORD nel file .env}
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
-      KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-${KEYCLOAK_ADMIN_PASSWORD:?Definire KEYCLOAK_DB_PASSWORD nel file .env}}
-      KC_HEALTH_ENABLED: "true"
+      EXTERNAL_KEYCLOAK_IP: ${EXTERNAL_KEYCLOAK_IP:?Definire EXTERNAL_KEYCLOAK_IP nel file .env per instradare il traffico}
+    command: >
+      sh -c '
+      socat TCP-LISTEN:8080,fork,reuseaddr TCP:$$EXTERNAL_KEYCLOAK_IP:8080 &
+      socat TCP-LISTEN:9000,fork,reuseaddr TCP:$$EXTERNAL_KEYCLOAK_IP:9000 &
+      wait
+      '
     networks:
       rete-datacenter:
-        ipv4_address: ${DATACENTER_KEYCLOAK_IP:-172.28.30.20}
-    depends_on:
-      keycloak-db:
-        condition: service_healthy
+        ipv4_address: ${DATACENTER_KEYCLOAK_IP:-172.28.30.20} #FORSE E' nella DMZ
     healthcheck:
-      test: ["CMD-SHELL", "bash -c \"exec 3<>/dev/tcp/127.0.0.1/9000; printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3; grep -q '200 OK' <&3\""]
+      test: ["CMD", "nc", "-z", "127.0.0.1", "9000"]
       interval: 10s
       timeout: 5s
       retries: 18
-      start_period: 60s
+      start_period: 10s
 
   iac-management:
     build:
@@ -359,7 +336,6 @@ services:
 
 volumes:
   gitea-data:
-  keycloak-db-data:
   management-kubeconfig:
   gslb-data:
   identity-data:

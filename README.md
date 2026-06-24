@@ -89,7 +89,27 @@ Il percorso DR contiene due componenti L7 con responsabilità diverse:
 1. `datacenter-load-balancer` è esterno al cluster e rappresenta una VIP stabile. In una soluzione reale sarebbe ridondato e potrebbe distribuire traffico fra più host o cluster DR.
 2. Il Kubernetes Ingress Controller interpreta le risorse `Ingress` e instrada verso i `Service` interni al cluster.
 
-Il `boundary-router` simula invece il router/firewall di confine. Nella PoC usa Nginx per rappresentare il NAT verso il load balancer, ma in produzione questo ruolo deve essere svolto da apparati L3/L4 o firewall HA.
+Il `boundary-router` simula invece il router/firewall di confine. Nella PoC usa Nginx per rappresentare il NAT verso il load balancer, ma in produzione questo ruolo deve essere svolto da apparati L3/L4 o firewall HA. In un ambiente reale avrebbe assolutamente più senso, ma in un ambiente Docker (come questa PoC) è tecnicamente proibitivo.
+
+Ecco i tre motivi principali per cui hai questa separazione (Nginx/Squid) invece di un firewall/router unificato come pfSense:
+
+1. Limiti strutturali di Docker (Kernel Linux vs FreeBSD)
+pfSense non è una semplice applicazione, ma un intero sistema operativo basato su FreeBSD. Docker, d'altra parte, non emula l'hardware, ma condivide il kernel Linux della macchina host. Poiché pfSense richiede un kernel FreeBSD, non esiste un container Docker ufficiale o stabile di pfSense. Per far girare pfSense ti servirebbe una Macchina Virtuale (VM) vera e propria (es. usando KVM, Proxmox, VMware), il che andrebbe contro l'idea di avere una PoC leggera, portabile e interamente orchestrata da un singolo file docker-compose.yml.
+
+2. Livello di rete: L7 vs L3/L4
+pfSense lavora nativamente ai livelli inferiori della rete (Livello 3/IP e Livello 4/TCP-UDP), facendo NAT e routing di pacchetti. Docker gestisce già il NAT internamente in modo un po' rigido. Usare Nginx (come Reverse Proxy) e Squid (come Forward Proxy) ti permette di gestire il routing a Livello 7 (Applicativo - HTTP/HTTPS). Questo è molto più facile da configurare e debuggare all'interno di un ambiente Docker isolato, perché sposti l'attenzione dal "routing dei pacchetti IP" al "routing delle richieste web", che è esattamente ciò che ci interessa per il Disaster Recovery di un'applicazione web.
+
+3. Simulazione pragmatica
+Come hai scritto tu stesso nel tuo README.md (riga 92):
+
+"Nella PoC usa Nginx per rappresentare il NAT verso il load balancer, ma in produzione questo ruolo deve essere svolto da apparati L3/L4 o firewall HA."
+
+La scelta di Nginx e Squid è una simulazione funzionale. Ti permette di dimostrare logicamente che:
+
+C'è un confine in ingresso (Nginx).
+C'è un controllo in uscita (Squid).
+Se l'app principale cade, il sistema è in grado di redirigere il traffico.
+In conclusione: In un'azienda reale avresti sicuramente un'appliance (fisica o virtuale) come pfSense, FortiGate, Palo Alto o F5 BIG-IP che gestisce sia Ingress che Egress in un unico punto. Tuttavia, per una PoC basata su Docker creata a scopo di tesi, l'approccio con container dedicati Nginx/Squid è il compromesso perfetto: ti offre il controllo e i flussi di una rete Enterprise, mantenendo la leggerezza e l'automazione di Docker Compose.
 
 ## Reti Compose
 
