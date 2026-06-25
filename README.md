@@ -8,61 +8,64 @@ PoC containerizzata di Disaster Recovery DNS-based. AWS rappresenta il sito di p
 flowchart LR
     subgraph EMP["Rete dipendenti"]
         HOST["Host / Utente"]
-        DNS["CoreDNS"]
-        GSLB["Controller GSLB"]
-        HOST -->|"Query DNS"| DNS
-        DNS --- GSLB
     end
-
-    BORDER["Router di confine<br/>Firewall, routing e NAT"]
 
     subgraph DMZ["DMZ"]
-        DCLB["Load balancer datacenter<br/>VIP stabile"]
+        BOUNDARY_DNS["Boundary DNS Proxy<br/>CoreDNS"]
+        ROUTER_1["Dipendenti Router"]
+        ROUTER_2["Datacenter Router"]
+        ROUTER_3["Cloud Router"]
     end
 
-    subgraph DC["Rete datacenter"]
-        KEYCLOAK["Keycloak<br/>Sempre attivo"]
-        KCDB[("Database Keycloak")]
-        IDCTRL["Identity Failover Controller"]
+    subgraph DC["Rete Datacenter"]
+        DC_LB["Load Balancer Datacenter<br/>Nginx / VIP stabile"]
+        KEYCLOAK["Keycloak"]
+        IDP_CONTROLLER["Identity Failover Controller"]
         GITEA["Gitea"]
         IAC["IaC Management"]
         CM["Cluster Management"]
 
-        subgraph LANDING["DR Landing Site"]
-            HOSTS["Host DR container-capable"]
-            subgraph KIND["Cluster Kind"]
-                K8SING["Kubernetes Ingress Controller"]
-                APP["reverse-dr-app"]
-                PG[("PostgreSQL DR")]
-                MINIO[("MinIO DR")]
-            end
+        subgraph K8S_DR["Cluster K8s On-Prem (DR)"]
+            K8GB_DR["K8GB Operator"]
+            K8S_INGRESS_DR["Nginx Ingress"]
+            APP_DR["reverse-dr-app"]
         end
     end
 
-    AWS["AWS Cloud<br/>Produzione"]
-    ENTRA["Microsoft Entra ID<br/>Provider primario"]
+    subgraph AWS["AWS Cloud<br/>Produzione (EKS)"]
+        subgraph K8S_PROD["Cluster K8s Primario (DC)"]
+            K8GB_PROD["K8GB Operator"]
+            K8S_INGRESS_PROD["Nginx Ingress"]
+            APP_PROD["reverse-dr-app"]
+        end
+    end
 
-    HOST -->|"Traffico applicativo"| BORDER
-    BORDER -->|"Destinazione AWS"| AWS
-    BORDER -->|"Destinazione DR"| DCLB
-    DCLB --> K8SING --> APP
-    APP --> PG
-    APP --> MINIO
-    APP --> KEYCLOAK
-    APP -->|"Provider primario"| ENTRA
-    KEYCLOAK --> KCDB
-    IDCTRL -->|"Health check OIDC"| ENTRA
-    IDCTRL -->|"Health check fallback"| KEYCLOAK
-    IDCTRL -.->|"ConfigMap / Secret e rollout"| APP
-    CM -->|"docker.sock"| HOSTS --> KIND
-    IAC -->|"Terraform: produzione"| AWS
-    IAC -->|"Terraform: VM, rete e storage DR"| HOSTS
-    IAC -->|"Terraform: VIP e load balancer DR"| DCLB
-    GITEA -.-> CM
-    GSLB -->|"Health check produzione"| AWS
-    GSLB -->|"Health check end-to-end DR"| BORDER
-    DNS -.->|"Normale: VIP AWS"| AWS
-    DNS -.->|"Failover: VIP datacenter"| BORDER
+    ENTRA["Microsoft Entra ID"]
+
+    K8GB_PROD <.->|"Sync stato via EdgeDNS"| K8GB_DR
+
+    %% Flussi NORMALE ESERCIZIO (Numeri)
+    HOST -->|"1. Query DNS Primario"| BOUNDARY_DNS
+    BOUNDARY_DNS -->|"Forward UDP verso Prod"| ROUTER_3
+    ROUTER_3 -->|"Risoluzione K8GB Prod"| K8GB_PROD
+    
+    HOST -->|"2. Traffico HTTP"| ROUTER_1
+    ROUTER_1 -->|"3. Instrada"| ROUTER_3
+    ROUTER_3 -->|"4. Ingresso K8s"| K8S_INGRESS_PROD
+    K8S_INGRESS_PROD -->|"5. Richiesta"| APP_PROD
+    APP_PROD -->|"6. Autenticazione"| ENTRA
+
+    %% Flussi DISASTER RECOVERY (Lettere)
+    HOST -.->|"A. Query DNS Secondario"| BOUNDARY_DNS
+    BOUNDARY_DNS -.->|"Forward UDP verso DR"| ROUTER_2
+    ROUTER_2 -.->|"Risoluzione K8GB DR"| K8GB_DR
+
+    HOST -.->|"B. Traffico HTTP"| ROUTER_1
+    ROUTER_1 -.->|"C. Instrada verso DC"| ROUTER_2
+    ROUTER_2 -.->|"D. VIP Datacenter"| DC_LB
+    DC_LB -.->|"E. Ingresso K8s"| K8S_INGRESS_DR
+    K8S_INGRESS_DR -.->|"F. Richiesta"| APP_DR
+    APP_DR -.->|"G. Fallback Auth"| KEYCLOAK
 ```
 
 Il DR Landing Site non è una rete distinta: è una capacità di calcolo collocata nella rete datacenter. Nella PoC il nodo Kind viene quindi collegato a `rete-datacenter`.
@@ -176,30 +179,30 @@ L'approvazione scade dopo `IDENTITY_APPROVAL_TTL_SECONDS`; operatore, timestamp 
 
 La `NetworkPolicy` standard non supporta allowlist FQDN. La PoC consente HTTPS pubblico per raggiungere Entra; in produzione questo traffico deve attraversare un egress gateway con allowlist per gli endpoint Microsoft.
 
-## DNS-GSLB
+## Multi-Cluster K8GB (Cloud Native GSLB)
 
-Il controller controlla produzione e DR separatamente. Il passaggio a DR avviene solo quando:
+La logica di Global Server Load Balancing e Disaster Recovery è gestita nativamente tramite **K8GB (Kubernetes Global Balancer)**, l'operatore open-source standard per architetture multi-cluster.
 
-1. la produzione fallisce per `GSLB_FAILURE_THRESHOLD` controlli consecutivi;
-2. `/ready` del DR risponde correttamente per `GSLB_RECOVERY_THRESHOLD` controlli consecutivi.
+L'infrastruttura di DR è composta da due cluster Kubernetes (es. Datacenter locale e Landing Site DR) che operano in sincronia:
+1. **K8GB Operator**: Installato in entrambi i cluster, controlla la disponibilità degli Ingress esposti.
+2. **GeoTagging**: A ciascun cluster è assegnato un tag geografico (`eu-prod` per il primario, `eu-dr` per il secondario).
+3. **CoreDNS & ExternalDNS Interni**: K8GB manipola dinamicamente i record DNS a livello di CoreDNS interno ai cluster, scambiandosi le informazioni di stato (Endpoints) tramite protocollo EdgeDNS.
 
-`/ready` verifica realmente PostgreSQL, MinIO e Keycloak; il GSLB non considera quindi sano un sito che espone soltanto Nginx.
+A differenza di soluzioni obsolete basate su script esterni o file JSON di configurazione, le logiche di failover sono dichiarative. Si crea una Custom Resource `Gslb`:
 
-Il record DNS usa TTL breve e viene aggiornato atomicamente. Lo stato è consultabile con:
-
-```bash
-docker compose exec cluster-management cat /var/lib/gslb-control/status.json
+```yaml
+apiVersion: k8gb.absa.oss/v1beta1
+kind: Gslb
+metadata:
+  name: reverse-dr-app
+spec:
+  ingress: ...
+  strategy:
+    type: failover # Failover automatico se il primario è 'Unhealthy'
+    primaryGeoTag: eu-prod
 ```
 
-Override operativo:
-
-```bash
-docker compose exec cluster-management bash scripts/03_set_gslb_mode.sh auto
-docker compose exec cluster-management bash scripts/03_set_gslb_mode.sh production
-docker compose exec cluster-management bash scripts/03_set_gslb_mode.sh dr
-```
-
-Gli override `production` e `dr` bypassano volontariamente gli health check. `auto` restituisce la decisione alla policy.
+Il `boundary-dns-router` al perimetro aziendale fa da proxy verso i CoreDNS dei cluster interni, i quali forniscono le risposte autoritative aggiornate in tempo reale in base alla reale "Readiness" dei pod.
 
 ## Configurazione
 
@@ -219,10 +222,20 @@ Gli override `production` e `dr` bypassano volontariamente gli health check. `au
 
 ## Avvio
 
+## Avvio
+
+Per lanciare la PoC nella nuova veste Cloud-Native Multi-Cluster (assicurarsi di avere risorse a sufficienza sul Docker Host):
+
 ```bash
+# Avvio dell'infrastruttura macro di rete e management
 docker compose up -d --build
+
+# Inizializzazione Git
 docker compose exec cluster-management bash scripts/01_init_corporate_git.sh
-docker compose exec cluster-management bash scripts/00_bootstrap_cluster.sh
+
+# Bootstrap automatizzato Multi-Cluster (Due cluster K8s + K8GB)
+chmod +x scripts/*.sh
+./scripts/deploy_all_clusters.sh
 ```
 
 Provisioning Terraform della produzione AWS:

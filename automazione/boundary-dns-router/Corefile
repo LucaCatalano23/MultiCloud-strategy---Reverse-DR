@@ -1,5 +1,5 @@
 reverse-dr.local:53 {
-    forward . 172.28.10.53
+    forward . 172.28.20.53
     errors
 }
 

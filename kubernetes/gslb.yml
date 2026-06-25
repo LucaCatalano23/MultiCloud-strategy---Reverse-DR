@@ -1,0 +1,21 @@
+apiVersion: k8gb.absa.oss/v1beta1
+kind: Gslb
+metadata:
+  name: reverse-dr-app
+  namespace: reverse-dr
+spec:
+  ingress:
+    rules:
+      - host: app.reverse-dr.local
+        http:
+          paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: reverse-dr-app
+                port:
+                  name: http
+  strategy:
+    type: roundRobin # Oppure failover
+    primaryGeoTag: eu-prod

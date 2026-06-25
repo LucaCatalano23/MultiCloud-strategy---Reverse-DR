@@ -1,113 +1,78 @@
-
 flowchart LR
     subgraph EMP["Rete dipendenti"]
         HOST["Host / Utente"]
-        DNS["CoreDNS<br/>DNS aziendale"]
-        GSLB["Controller GSLB<br/>Failover AWS / DR"]
-
-        HOST -->|"Query DNS<br/>TCP/UDP 53"| DNS
-        DNS --- GSLB
-    end
-
-    subgraph EDGE["Confine aziendale"]
-        ROUTER["Boundary Router<br/>Firewall, routing e NAT"]
     end
 
     subgraph DMZ["DMZ"]
-        DC_LB["Load Balancer Datacenter<br/>Nginx / VIP stabile"]
+        DNS["Server DNS<br/>CoreDNS"]
+        ROUTER_1["Dipendenti Router"]
+        ROUTER_2["Datacenter Router"]
+        ROUTER_3["Cloud Router"]
     end
 
     subgraph DC["Rete Datacenter"]
-        GITEA["Gitea<br/>Git Server"]
-        GITEA_INIT["Gitea Init<br/>Ephemeral"]
+        GITEA["Git Server"]
 
         IAC["IaC Management<br/>Terraform / AWS CLI"]
         CLUSTER_MGMT["Cluster Management<br/>Kind / kubectl / Ansible"]
 
-        KEYCLOAK["Keycloak<br/>DR di Entra ID"]
-        KEYCLOAK_DB[("PostgreSQL Keycloak<br/>Persistente")]
+        KEYCLOAK["Keycloak"]
 
         IDP_CONTROLLER["Identity Failover Controller<br/>Health check e state machine"]
         APPROVAL["Approvazione operatore<br/>Failback verso Entra"]
 
-        subgraph LANDING["DR Landing Site"]
-            DR_HOSTS["Host DR<br/>Container-capable"]
-
-            subgraph KIND["Cluster Kind / Kubernetes"]
-                K8S_INGRESS["Nginx Ingress Controller"]
-
-                APP["reverse-dr-app<br/>2 repliche"]
-                POSTGRES[("PostgreSQL DR")]
-                MINIO[("MinIO DR")]
-
-                IDP_CONFIG["ConfigMap<br/>identity-provider-active"]
-                IDP_SECRET["Secret<br/>identity-provider-credentials"]
-
-                KC_SERVICE["Service Kubernetes<br/>keycloak-datacenter"]
-                KC_ENDPOINT["EndpointSlice<br/>172.28.30.20"]
-
-                POLICY["NetworkPolicy<br/>Island Mode"]
-            end
+        subgraph K8S_DR["Cluster Kubernetes On-Prem (DR)"]
+            K8GB_DR["K8GB Operator<br/>CoreDNS + ExternalDNS"]
+            K8S_INGRESS_DR["Nginx Ingress Controller"]
+            APP_DR["reverse-dr-app"]
         end
     end
 
-    AWS["AWS Cloud<br/>Produzione"]
+    subgraph AWS["AWS Cloud<br/>Produzione (EKS)"]
+        subgraph K8S_PROD["Cluster Kubernetes Primario"]
+            K8GB_PROD["K8GB Operator<br/>CoreDNS + ExternalDNS"]
+            K8S_INGRESS_PROD["Nginx Ingress Controller"]
+            APP_PROD["app"]
+        end
+    end
+
     ENTRA["Microsoft Entra ID<br/>Identity Provider primario"]
 
-    %% Failover del sito
-    GSLB -->|"Health check produzione"| AWS
-    GSLB -->|"Health check end-to-end DR<br/>/ready"| ROUTER
+    %% Sincronizzazione continua
+    K8GB_PROD <.->|"Sync stato via EdgeDNS"| K8GB_DR
+    IDP_CONTROLLER -.->|"Health check OIDC"| ENTRA
+    IDP_CONTROLLER -.->|"Health check readiness"| KEYCLOAK
 
-    %% Percorso applicativo
-    HOST -->|"Traffico verso il sito risolto"| ROUTER
+    %% Flussi NORMALE ESERCIZIO (Numeri)
+    HOST -->|"1. Query al DNS Primario"| ROUTER_1
+    ROUTER_1 -->|"1. Query al DNS Primario"| DNS
+    DNS -->|"2. Forward pacchetto UDP"| ROUTER_3
+    ROUTER_3 -->|"3. Arriva a K8GB Prod"| K8GB_PROD
+    
+    HOST -->|"4. Traffico HTTP"| ROUTER_1
+    ROUTER_1 -->|"5. Instrada traffico"| ROUTER_3
+    ROUTER_3 -->|"6. Ingresso K8s"| K8S_INGRESS_PROD
+    K8S_INGRESS_PROD -->|"7. Richiesta"| APP_PROD
+    APP_PROD -->|"8. Autenticazione"| ENTRA
 
-    IAC -->|"Provisioning Terraform"| AWS
+    %% Flussi DISASTER RECOVERY (Lettere)
+    HOST -.->|"A. Query al DNS Secondario (Timeout Primario)"| ROUTER_1
+    ROUTER_1 -.->|"A. Query al DNS Secondario (Timeout Primario)"| DNS
+    DNS -.->|"B. Forward pacchetto UDP"| ROUTER_2
+    ROUTER_2 -.->|"C. Arriva a K8GB DR"| K8GB_DR
 
-    ROUTER -->|"Produzione"| AWS
-    ROUTER -->|"Disaster Recovery"| DC_LB
-    DC_LB -->|"Host: app.reverse-dr.local"| K8S_INGRESS
-    K8S_INGRESS --> APP
-
-    %% Dipendenze applicative
-    APP --> POSTGRES
-    APP --> MINIO
-
-    POLICY -.->|"Controlla egress"| APP
-
-    %% Identity provider primario
-    APP -->|"Provider primario"| ENTRA
-    IDP_CONTROLLER -->|"Health check OIDC"| ENTRA
-
-    %% Keycloak come fallback
-    IDP_CONTROLLER -->|"Health check readiness"| KEYCLOAK
-    APP -->|"Provider di fallback"| KC_SERVICE
-    KC_SERVICE --> KC_ENDPOINT
-    KC_ENDPOINT --> KEYCLOAK
-    KEYCLOAK --> KEYCLOAK_DB
-
-    %% Configurazione identity dinamica
-    IDP_CONTROLLER -->|"Aggiorna provider e issuer"| IDP_CONFIG
-    IDP_CONTROLLER -->|"Aggiorna client ID e secret"| IDP_SECRET
-    IDP_CONFIG -->|"IDP_PROVIDER<br/>IDP_ISSUER_URL"| APP
-    IDP_SECRET -->|"IDP_CLIENT_ID<br/>IDP_CLIENT_SECRET"| APP
-    IDP_CONTROLLER -.->|"Rollout controllato"| APP
+    HOST -.->|"D. Traffico HTTP (Failover)"| ROUTER_1
+    ROUTER_1 -.->|"E. Instrada verso DR"| ROUTER_2
+    ROUTER_2 -.->|"F. Ingresso K8s"| K8S_INGRESS_DR
+    K8S_INGRESS_DR -.->|"G. Richiesta"| APP_DR
+    APP_DR -.->|"H. Fallback Auth"| KEYCLOAK
 
     %% Failback con approvazione
     IDP_CONTROLLER -->|"Entra nuovamente disponibile"| APPROVAL
     APPROVAL -->|"Failback approvato"| IDP_CONTROLLER
 
     %% Gestione infrastrutturale
-    GITEA_INIT -->|"Inizializzazione"| GITEA
-    CLUSTER_MGMT -->|"Push / Pull codice e immagini"| GITEA
-
-    CLUSTER_MGMT -->|"docker.sock"| DR_HOSTS
-    DR_HOSTS -->|"Esegue i nodi Kind"| KIND
-    CLUSTER_MGMT -->|"kubectl / Ansible"| KIND
-    
-
-    %% Override del failover applicativo
-    CLUSTER_MGMT -.->|"Override<br/>auto / production / dr"| GSLB
-    GSLB -.->|"Aggiorna zona DNS"| DNS
+    CLUSTER_MGMT -->|"Push / Pull codice"| GITEA
 
     classDef employee fill:#e3f2fd,stroke:#1976d2,color:#212121
     classDef edge fill:#fff3e0,stroke:#ef6c00,color:#212121
@@ -119,14 +84,11 @@ flowchart LR
     classDef identity fill:#e0f7fa,stroke:#00838f,color:#212121
     classDef approval fill:#fff9c4,stroke:#f57f17,color:#212121
 
-    class HOST,DNS,GSLB employee
-    class ROUTER,DC_LB edge
+    class HOST employee
+    class DNS,ROUTER_1,ROUTER_2,ROUTER_3,DC_LB edge
     class GITEA,GITEA_INIT,IAC,CLUSTER_MGMT datacenter
-
-    class DR_HOSTS,K8S_INGRESS,APP,IDP_CONFIG,IDP_SECRET,KC_SERVICE,KC_ENDPOINT dr
-    class POSTGRES,MINIO,KEYCLOAK_DB data
-    class POLICY security
-
+    class K8S_PROD,K8S_DR,K8S_INGRESS_PROD,K8S_INGRESS_DR,APP_PROD,APP_DR dr
+    class POSTGRES,MINIO data
     class ENTRA,KEYCLOAK,IDP_CONTROLLER identity
     class APPROVAL approval
-    class TRANSIT,AWS cloud
+    class AWS cloud
