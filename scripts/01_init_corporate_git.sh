@@ -11,6 +11,19 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 
+echo "Inizializzazione utente admin di Gitea..."
+docker exec -u git gitea gitea admin user create \
+  --config /data/gitea/conf/app.ini \
+  --username "${GITEA_USER}" \
+  --password "${GITEA_PASSWORD}" \
+  --email "admin@example.invalid" \
+  --admin --must-change-password=false 2>/dev/null || \
+docker exec -u git gitea gitea admin user change-password \
+  --config /data/gitea/conf/app.ini \
+  --username "${GITEA_USER}" \
+  --password "${GITEA_PASSWORD}" \
+  --must-change-password=false
+
 http_code="$(curl --silent --output /tmp/gitea-create.json --write-out '%{http_code}' \
   --user "${GITEA_USER}:${GITEA_PASSWORD}" \
   --header 'Content-Type: application/json' \
