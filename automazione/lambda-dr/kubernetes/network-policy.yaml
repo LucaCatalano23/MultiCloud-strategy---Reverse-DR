@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: lambda-runtime-ingress-from-adapter
+  namespace: lambda-dr
+spec:
+  podSelector:
+    matchLabels:
+      lambda-dr/runtime: "true"
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: event-adapter
+      ports:
+        - protocol: TCP
+          port: 8080

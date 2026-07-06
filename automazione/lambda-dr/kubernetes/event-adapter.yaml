@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-adapter
+  namespace: lambda-dr
+  labels:
+    app.kubernetes.io/name: event-adapter
+    app.kubernetes.io/part-of: reverse-dr-lambda-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: event-adapter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: event-adapter
+        app.kubernetes.io/part-of: reverse-dr-lambda-platform
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: event-adapter
+          image: reverse-dr/event-adapter:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: RIE_SERVICE_TEMPLATE
+              value: http://lambda-{function_name}.lambda-dr.svc.cluster.local:8080
+            - name: RIE_TIMEOUT_SECONDS
+              value: "8"
+            - name: API_GATEWAY_STAGE
+              value: dr
+            - name: API_GATEWAY_API_ID
+              value: reverse-dr-k8s
+            - name: AWS_REGION
+              value: eu-west-1
+            - name: LOG_LEVEL
+              value: INFO
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: event-adapter
+  namespace: lambda-dr
+  labels:
+    app.kubernetes.io/name: event-adapter
+    app.kubernetes.io/part-of: reverse-dr-lambda-platform
+spec:
+  selector:
+    app.kubernetes.io/name: event-adapter
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

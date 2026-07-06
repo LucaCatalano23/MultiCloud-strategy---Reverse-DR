@@ -4,6 +4,7 @@ import base64
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -23,7 +24,8 @@ def configure_logging() -> None:
     handler.setFormatter(
         jsonlogger.JsonFormatter(
             "%(asctime)s %(levelname)s %(name)s %(message)s "
-            "%(request_id)s %(method)s %(path)s %(status_code)s %(duration_ms)s"
+            "%(request_id)s %(method)s %(path)s %(function_name)s "
+            "%(status_code)s %(duration_ms)s"
         )
     )
     root = logging.getLogger()
@@ -43,6 +45,7 @@ class Settings:
     stage: str
     api_id: str
     region: str
+    rie_service_template: str | None
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -52,15 +55,31 @@ class Settings:
             stage=os.getenv("API_GATEWAY_STAGE", "dr"),
             api_id=os.getenv("API_GATEWAY_API_ID", "onprem-dr"),
             region=os.getenv("AWS_REGION", "eu-west-1"),
+            rie_service_template=os.getenv("RIE_SERVICE_TEMPLATE"),
         )
 
     @property
     def invocation_url(self) -> str:
         return f"{self.rie_base_url}{RIE_INVOCATION_PATH}"
 
+    def invocation_url_for(self, function_name: str | None) -> str:
+        if not function_name:
+            return self.invocation_url
+        if not self.rie_service_template:
+            return self.invocation_url
+        return f"{self.rie_service_template.format(function_name=function_name).rstrip('/')}{RIE_INVOCATION_PATH}"
+
 
 settings = Settings.from_environment()
 app = FastAPI(title="Lambda DR Event Adapter", version="1.0.0")
+FUNCTION_NAME_PATTERN = re.compile(r"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$")
+
+
+def _validate_function_name(function_name: str) -> str:
+    normalized = function_name.strip().lower()
+    if not FUNCTION_NAME_PATTERN.fullmatch(normalized):
+        raise ValueError("Function name must be a valid Kubernetes service suffix")
+    return normalized
 
 
 def _single_value_mapping(values: dict[str, list[str]]) -> dict[str, str] | None:
@@ -179,14 +198,16 @@ async def health() -> Response:
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@app.api_route("/{proxy_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
-async def invoke_lambda(request: Request, proxy_path: str) -> Response:
+async def _invoke_lambda(
+    request: Request, proxy_path: str, function_name: str | None = None
+) -> Response:
     started = time.perf_counter()
     request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
     log_context = {
         "request_id": request_id,
         "method": request.method,
         "path": _event_path(proxy_path),
+        "function_name": function_name,
         "status_code": None,
         "duration_ms": None,
     }
@@ -194,8 +215,9 @@ async def invoke_lambda(request: Request, proxy_path: str) -> Response:
     try:
         event = await build_api_gateway_proxy_event(request, proxy_path)
         event["requestContext"]["requestId"] = request_id
+        target_url = settings.invocation_url_for(function_name)
         async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
-            rie_response = await client.post(settings.invocation_url, json=event)
+            rie_response = await client.post(target_url, json=event)
         if rie_response.status_code >= 500:
             log_context["status_code"] = rie_response.status_code
             logger.error("rie_invocation_failed", extra=log_context)
@@ -231,3 +253,24 @@ async def invoke_lambda(request: Request, proxy_path: str) -> Response:
     finally:
         log_context["duration_ms"] = round((time.perf_counter() - started) * 1000, 2)
         logger.info("request_completed", extra=log_context)
+
+
+@app.api_route(
+    "/functions/{function_name}/{proxy_path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+)
+async def invoke_named_lambda(request: Request, function_name: str, proxy_path: str) -> Response:
+    try:
+        normalized_name = _validate_function_name(function_name)
+    except ValueError as exc:
+        return Response(
+            content=json.dumps({"message": str(exc)}),
+            status_code=status.HTTP_400_BAD_REQUEST,
+            media_type="application/json",
+        )
+    return await _invoke_lambda(request, proxy_path, normalized_name)
+
+
+@app.api_route("/{proxy_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+async def invoke_default_lambda(request: Request, proxy_path: str) -> Response:
+    return await _invoke_lambda(request, proxy_path)

@@ -1,0 +1,6 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lambda-dr
+  labels:
+    app.kubernetes.io/part-of: reverse-dr-lambda-platform
