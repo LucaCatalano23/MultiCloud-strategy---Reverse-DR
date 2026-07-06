@@ -4,14 +4,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
-RUN addgroup --system app && adduser --system --ingroup app app
+RUN addgroup --system adapter && adduser --system --ingroup adapter adapter
+
 WORKDIR /app
-
-COPY app/requirements.txt ./requirements.txt
+COPY automazione/lambda-dr/event-adapter/requirements.txt ./requirements.txt
 RUN pip install --requirement requirements.txt
-COPY app/app.py ./app.py
+COPY automazione/lambda-dr/event-adapter/app.py ./app.py
 
-USER app
+USER adapter
 EXPOSE 8080
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "2"]
-

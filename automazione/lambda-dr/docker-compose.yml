@@ -1,0 +1,88 @@
+name: reverse-dr-lambda-emulation
+
+services:
+  lambda-runtime:
+    build:
+      context: ../..
+      dockerfile: automazione/lambda-dr/lambda-image/Dockerfile
+    image: reverse-dr/lambda-runtime:python3.11
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=512m
+    mem_limit: 512m
+    mem_reservation: 256m
+    pids_limit: 128
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      AWS_REGION: ${AWS_REGION:-eu-west-1}
+      AWS_DEFAULT_REGION: ${AWS_REGION:-eu-west-1}
+      AWS_LAMBDA_FUNCTION_NAME: ${AWS_LAMBDA_FUNCTION_NAME:-reverse-dr-sample}
+      AWS_LAMBDA_FUNCTION_MEMORY_SIZE: "512"
+      AWS_LAMBDA_FUNCTION_VERSION: ${AWS_LAMBDA_FUNCTION_VERSION:-$$LATEST}
+      # Compose demo fallback only. In production, mount short-lived credentials
+      # from Vault/External Secrets rather than baking them into the image.
+      AWS_ACCESS_KEY_ID_FILE: /run/secrets/aws_access_key_id
+      AWS_SECRET_ACCESS_KEY_FILE: /run/secrets/aws_secret_access_key
+    secrets:
+      - aws_access_key_id
+      - aws_secret_access_key
+    expose:
+      - "8080"
+    networks:
+      - lambda-dr
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python - <<'PY'\nimport http.client\nconn=http.client.HTTPConnection('127.0.0.1',8080,timeout=2)\nconn.request('POST','/2015-03-31/functions/function/invocations','{}',{'content-type':'application/json'})\nprint(conn.getresponse().status)\nPY",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  event-adapter:
+    build:
+      context: ../..
+      dockerfile: automazione/lambda-dr/event-adapter/Dockerfile
+    image: reverse-dr/event-adapter:latest
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    mem_limit: 128m
+    pids_limit: 128
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      RIE_BASE_URL: http://lambda-runtime:8080
+      RIE_TIMEOUT_SECONDS: "8"
+      API_GATEWAY_STAGE: dr
+      API_GATEWAY_API_ID: reverse-dr-local
+      AWS_REGION: ${AWS_REGION:-eu-west-1}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8088:8080"
+    networks:
+      - lambda-dr
+    depends_on:
+      lambda-runtime:
+        condition: service_healthy
+
+secrets:
+  aws_access_key_id:
+    file: ./secrets/aws_access_key_id
+  aws_secret_access_key:
+    file: ./secrets/aws_secret_access_key
+
+networks:
+  lambda-dr:
+    name: lambda-dr
+    driver: bridge
+    internal: false

@@ -1,6 +1,0 @@
-bucket_name              = "azienda-reverse-dr-poc-NOME-UNIVOCO"
-database_name            = "reversedr"
-database_username        = "reversedr"
-db_publicly_accessible   = false
-db_allowed_cidrs         = []
-
