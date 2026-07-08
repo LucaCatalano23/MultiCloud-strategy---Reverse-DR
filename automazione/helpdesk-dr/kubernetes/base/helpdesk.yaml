@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: helpdesk-api
+  namespace: helpdesk
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: helpdesk-api
+  template:
+    metadata:
+      labels:
+        app: helpdesk-api
+    spec:
+      containers:
+        - name: helpdesk-api
+          image: python:3.12-slim
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -lc
+            - |
+              pip install --no-cache-dir -r /app-src/requirements.txt
+              cp /app-src/main.py /tmp/main.py
+              cd /tmp
+              uvicorn main:app --host 0.0.0.0 --port 8080
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DATABASE_URL
+              value: postgresql://helpdesk:helpdesk-password@postgres.helpdesk.svc.cluster.local:5432/helpdesk
+            - name: SITE_ROLE
+              valueFrom:
+                configMapKeyRef:
+                  name: helpdesk-site
+                  key: SITE_ROLE
+            - name: SITE_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: helpdesk-site
+                  key: SITE_NAME
+            - name: DR_READY_POLICY
+              valueFrom:
+                configMapKeyRef:
+                  name: helpdesk-site
+                  key: DR_READY_POLICY
+            - name: DR_READY_FILE
+              value: /dr-state/ready
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+            initialDelaySeconds: 8
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          volumeMounts:
+            - name: source
+              mountPath: /app-src
+            - name: dr-state
+              mountPath: /dr-state
+      volumes:
+        - name: source
+          configMap:
+            name: helpdesk-app-source
+        - name: dr-state
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: helpdesk-api
+  namespace: helpdesk
+spec:
+  selector:
+    app: helpdesk-api
+  ports:
+    - port: 80
+      targetPort: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: helpdesk
+  namespace: helpdesk
+spec:
+  rules:
+    - host: helpdesk.azienda.lan
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: helpdesk-api
+                port:
+                  number: 80

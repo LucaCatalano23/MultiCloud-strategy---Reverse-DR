@@ -1,0 +1,23 @@
+apiVersion: k8gb.absa.oss/v1beta1
+kind: Gslb
+metadata:
+  name: helpdesk
+  namespace: helpdesk
+spec:
+  dnsZone: azienda.lan
+  strategy:
+    type: failover
+    primaryGeoTag: cloud
+  ingress:
+    ingressClassName: traefik
+    rules:
+      - host: helpdesk.azienda.lan
+        http:
+          paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: helpdesk-api
+                  port:
+                    number: 80

@@ -142,7 +142,7 @@ configure_container_runtime() {
   lxc_retry config set "${name}" boot.autostart false
   lxc_retry config set "${name}" security.nesting true
 
-  if [ "${kind}" = "openwrt-router" ]; then
+  if [ "${kind}" = "openwrt-router" ] || [ "${kind}" = "k3s-node" ]; then
     # OpenWrt init scripts touch low-level networking paths that are unreliable
     # in strict unprivileged containers, especially inside WSL-backed LXD.
     if ! lxc_retry info "${name}" | grep -q 'Status: Running'; then
@@ -326,7 +326,7 @@ configure_git_server() {
 
   lxc_retry exec git-server -- bash -lc '
     set -euo pipefail
-    install -d -o gitdaemon -g gitdaemon /srv/git
+    install -d -o gitdaemon -g nogroup /srv/git
     if [ ! -d /srv/git/infrastructure.git ]; then
       git init --bare /srv/git/infrastructure.git
       tmp="$(mktemp -d)"
@@ -341,7 +341,7 @@ configure_git_server() {
       git -C "$tmp" push origin main
       rm -rf "$tmp"
     fi
-    chown -R gitdaemon:gitdaemon /srv/git
+    chown -R gitdaemon:nogroup /srv/git
     sed -i "s|^GIT_DAEMON_ENABLE=.*|GIT_DAEMON_ENABLE=true|" /etc/default/git-daemon
     sed -i "s|^GIT_DAEMON_DIRECTORY=.*|GIT_DAEMON_DIRECTORY=/srv/git|" /etc/default/git-daemon
     sed -i "s|^GIT_DAEMON_OPTIONS=.*|GIT_DAEMON_OPTIONS=\"--export-all --base-path=/srv/git /srv/git\"|" /etc/default/git-daemon
@@ -666,7 +666,7 @@ main() {
   attach_provisioning_nic git-server
 
   init_container k3s-datacenter "${UBUNTU_IMAGE}"
-  configure_container_runtime k3s-datacenter ubuntu-service
+  configure_container_runtime k3s-datacenter k3s-node
   attach_nic k3s-datacenter "${NET_DATACENTER}" eth0 10.10.3.10
   attach_provisioning_nic k3s-datacenter
 
