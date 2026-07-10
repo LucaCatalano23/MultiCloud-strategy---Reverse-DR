@@ -404,6 +404,7 @@ configure_ansible_node() {
   configure_ubuntu_host ansible-node
   use_lab_route ansible-node 10.10.3.1
 
+  lxc_retry exec ansible-node -- install -d /etc/ansible
   lxc_retry exec ansible-node -- bash -lc "cat >/etc/ansible/hosts" <<EOF
 [datacenter]
 k3s-datacenter ansible_host=10.10.3.10

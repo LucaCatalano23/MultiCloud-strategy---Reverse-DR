@@ -10,7 +10,7 @@ if ! lxc_retry info "${GIT_SERVER_NAME}" >/dev/null 2>&1; then
   exit 1
 fi
 
-exec_git bash -lc "install -d -o gitdaemon -g gitdaemon /srv/git"
+exec_git bash -lc "install -d -o \$(id -u gitdaemon) -g \$(id -g gitdaemon) /srv/git"
 exec_git bash -lc "test -d /srv/git/${APP_REPOSITORY_NAME} || git init --bare /srv/git/${APP_REPOSITORY_NAME}"
 
 workdir="$(mktemp -d)"
@@ -28,21 +28,16 @@ git -C "${workdir}" config user.email "reverse-dr@example.invalid"
 git -C "${workdir}" add .
 git -C "${workdir}" commit -m "Publish helpdesk DR source of truth"
 git -C "${workdir}" branch -M main
-rm -rf "${workdir}/.git"
-lxc_retry file push --recursive "${workdir}" "${GIT_SERVER_NAME}/tmp/helpdesk-dr-work"
+exec_git rm -rf /tmp/helpdesk-dr-publish
+exec_git mkdir -p /tmp/helpdesk-dr-publish
+tar -C "${workdir}" -cf - . | lxc exec "${GIT_SERVER_NAME}" -- tar -C /tmp/helpdesk-dr-publish -xf -
 exec_git bash -lc "
   set -euo pipefail
-  rm -rf /tmp/helpdesk-dr-publish
-  mv /tmp/helpdesk-dr-work /tmp/helpdesk-dr-publish
+  git config --global --add safe.directory /tmp/helpdesk-dr-publish
+  git config --global --add safe.directory /srv/git/${APP_REPOSITORY_NAME}
   cd /tmp/helpdesk-dr-publish
-  git init
-  git config user.name 'Reverse DR Lab'
-  git config user.email 'reverse-dr@example.invalid'
-  git add .
-  git commit -m 'Publish helpdesk DR source of truth'
-  git branch -M main
   git push --force /srv/git/${APP_REPOSITORY_NAME} main
-  chown -R gitdaemon:gitdaemon /srv/git/${APP_REPOSITORY_NAME}
+  chown -R \$(id -u gitdaemon):\$(id -g gitdaemon) /srv/git/${APP_REPOSITORY_NAME}
   rm -rf /tmp/helpdesk-dr-publish
 "
 echo "Published source of truth to ${APP_REPOSITORY_URL}"

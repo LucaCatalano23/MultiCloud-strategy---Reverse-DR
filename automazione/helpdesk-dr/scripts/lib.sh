@@ -26,23 +26,59 @@ lxc_retry() {
 }
 
 container_running() {
-  lxc_retry info "$1" 2>/dev/null | grep -q "Status: Running"
+  [ "$(lxc_retry list "$1" -c s --format csv 2>/dev/null | tr '[:lower:]' '[:upper:]')" = "RUNNING" ]
+}
+
+ensure_container_started() {
+  local container="$1"
+
+  if container_running "${container}"; then
+    return 0
+  fi
+
+  lxc_retry start "${container}" || true
+  for _ in $(seq 1 60); do
+    if container_running "${container}"; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "Container ${container} did not reach RUNNING state" >&2
+  return 1
+}
+
+ensure_onprem_network_started() {
+  ensure_container_started router-edge
+  ensure_container_started router-dmz
+  ensure_container_started router-datacenter
 }
 
 exec_cloud() {
+  ensure_container_started "${CLOUD_K3S_NAME}"
   lxc_retry exec "${CLOUD_K3S_NAME}" -- "$@"
 }
 
 exec_onprem() {
+  ensure_onprem_network_started
+  ensure_container_started "${ONPREM_K3S_NAME}"
   lxc_retry exec "${ONPREM_K3S_NAME}" -- "$@"
 }
 
 exec_dns() {
+  ensure_container_started "${DNS_SERVER_NAME}"
   lxc_retry exec "${DNS_SERVER_NAME}" -- "$@"
 }
 
 exec_git() {
+  ensure_container_started "${GIT_SERVER_NAME}"
   lxc_retry exec "${GIT_SERVER_NAME}" -- "$@"
+}
+
+exec_ansible() {
+  ensure_onprem_network_started
+  ensure_container_started "${ANSIBLE_NODE_NAME}"
+  lxc_retry exec "${ANSIBLE_NODE_NAME}" -- "$@"
 }
 
 state_dir() {
@@ -84,20 +120,42 @@ wait_for_k3s() {
 }
 
 install_k3s_if_missing() {
-  local exec_fn="$1"
+  local container="$1"
+  local exec_fn="$2"
 
-  if "${exec_fn}" sh -lc "command -v k3s >/dev/null 2>&1"; then
+  if lxc exec "${container}" -- test -x /usr/local/bin/k3s >/dev/null 2>&1; then
     return 0
   fi
 
   "${exec_fn}" sh -lc "curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='--disable traefik=false --write-kubeconfig-mode 644' sh -"
 }
 
+prepare_lxc_for_k3s() {
+  local exec_fn="$1"
+
+  "${exec_fn}" sh -lc "ln -sf /dev/console /dev/kmsg"
+  "${exec_fn}" sh -lc "cat >/etc/tmpfiles.d/k3s-lxc.conf <<'EOF'
+L /dev/kmsg - - - - /dev/console
+EOF"
+}
+
+configure_lxc_k3s_container() {
+  local container="$1"
+
+  lxc_retry config set "${container}" security.nesting true
+  lxc_retry config set "${container}" security.privileged true
+  if [ "${ALLOW_LXC_WRITABLE_PROC_SYS:-false}" = "true" ]; then
+    lxc_retry config set "${container}" raw.lxc "lxc.mount.auto = proc:rw sys:rw"
+  fi
+}
+
 copy_to_container() {
   local container="$1"
   local src="$2"
   local dst="$3"
-  lxc_retry file push --recursive "${src}" "${container}${dst}"
+  lxc_retry exec "${container}" -- rm -rf "${dst}"
+  lxc_retry exec "${container}" -- mkdir -p "${dst}"
+  tar -C "${src}" -cf - . | lxc exec "${container}" -- tar -C "${dst}" -xf -
 }
 
 render_dns_zone() {

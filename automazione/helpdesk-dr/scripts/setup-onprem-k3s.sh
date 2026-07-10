@@ -11,10 +11,10 @@ if ! lxc_retry info "${ONPREM_K3S_NAME}" >/dev/null 2>&1; then
 fi
 
 if ! container_running "${ONPREM_K3S_NAME}"; then
-  lxc_retry config set "${ONPREM_K3S_NAME}" security.nesting true
-  lxc_retry config set "${ONPREM_K3S_NAME}" security.privileged true
+  configure_lxc_k3s_container "${ONPREM_K3S_NAME}"
   lxc_retry start "${ONPREM_K3S_NAME}"
 else
+  configure_lxc_k3s_container "${ONPREM_K3S_NAME}"
   if ! lxc_retry config get "${ONPREM_K3S_NAME}" security.privileged | grep -q '^true$'; then
     cat >&2 <<EOF
 ${ONPREM_K3S_NAME} is already running but is not privileged.
@@ -29,8 +29,10 @@ exec_onprem sh -lc "printf 'Acquire::ForceIPv4 \"true\";\n' >/etc/apt/apt.conf.d
 exec_onprem apt-get update
 exec_onprem env DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates iproute2 postgresql-client git
 exec_onprem install -d "${BACKUP_DIR}"
+prepare_lxc_for_k3s exec_onprem
 
-install_k3s_if_missing exec_onprem
+install_k3s_if_missing "${ONPREM_K3S_NAME}" exec_onprem
+exec_onprem systemctl restart k3s
 wait_for_k3s "${ONPREM_K3S_NAME}" exec_onprem
 
 echo "on-prem k3s ready: ${ONPREM_K3S_NAME} ${ONPREM_K3S_IP}"

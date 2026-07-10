@@ -20,8 +20,7 @@ if ! lxc_retry info "${CLOUD_K3S_NAME}" >/dev/null 2>&1; then
   fi
 fi
 
-lxc_retry config set "${CLOUD_K3S_NAME}" security.nesting true
-lxc_retry config set "${CLOUD_K3S_NAME}" security.privileged true
+configure_lxc_k3s_container "${CLOUD_K3S_NAME}"
 
 if ! lxc_retry config device show "${CLOUD_K3S_NAME}" | grep -q '^eth0:'; then
   lxc_retry network attach "${CLOUD_NET}" "${CLOUD_K3S_NAME}" eth0 eth0
@@ -37,9 +36,10 @@ exec_cloud sh -lc "printf 'Acquire::ForceIPv4 \"true\";\n' >/etc/apt/apt.conf.d/
 exec_cloud apt-get update
 exec_cloud env DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates iproute2 postgresql-client git
 exec_cloud install -d "${BACKUP_DIR}"
+prepare_lxc_for_k3s exec_cloud
 
-install_k3s_if_missing exec_cloud
+install_k3s_if_missing "${CLOUD_K3S_NAME}" exec_cloud
+exec_cloud systemctl restart k3s
 wait_for_k3s "${CLOUD_K3S_NAME}" exec_cloud
 
 echo "cloud-sim ready: ${CLOUD_K3S_NAME} ${CLOUD_K3S_IP}"
-

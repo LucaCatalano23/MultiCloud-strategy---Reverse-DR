@@ -27,6 +27,6 @@ else
   check "cloud helpdesk ready" cloud_ready
 fi
 check "dns resolves helpdesk" exec_dns dig +short "${HELPDESK_FQDN}"
-check "ansible sees helpdesk dns" lxc_retry exec "${ANSIBLE_NODE_NAME}" -- dig +short "@${DNS_SERVER_IP}" "${HELPDESK_FQDN}"
+check "ansible sees helpdesk dns" exec_ansible dig +short "@${DNS_SERVER_IP}" "${HELPDESK_FQDN}"
 
 echo "Helpdesk DR checks passed."
