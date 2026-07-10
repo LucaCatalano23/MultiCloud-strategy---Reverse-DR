@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
-source "${SCRIPT_DIR}/lib.sh"
+source "${SCRIPT_DIR}/../common/lib.sh"
 
 wait_for_k3s "${ONPREM_K3S_NAME}" exec_onprem
 exec_onprem kubectl -n "${APP_NAMESPACE}" scale deployment/helpdesk-api --replicas=1

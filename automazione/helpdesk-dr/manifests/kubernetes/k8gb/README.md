@@ -9,7 +9,7 @@ K8GB deve decidere quale sito e pubblicabile via DNS globale. Non deve eseguire 
 La logica operativa resta nel DR controller:
 
 1. controlla `/health/ready` sul primario;
-2. quando il primario supera la soglia di errore, esegue `scripts/failover-to-onprem.sh`;
+2. quando il primario supera la soglia di errore, esegue `scripts/failover/failover-to-onprem.sh`;
 3. il playbook ripristina il database, promuove on-prem e abilita la readiness;
 4. K8GB vede on-prem ready e puo risolvere `helpdesk.azienda.lan` verso il sito DR.
 
@@ -25,7 +25,7 @@ La logica operativa resta nel DR controller:
 Applicare solo dopo aver installato K8GB:
 
 ```bash
-kubectl apply -f kubernetes/k8gb/gslb-helpdesk.yaml
+kubectl apply -f manifests/kubernetes/k8gb/gslb-helpdesk.yaml
 ```
 
 Nel lab locale senza delega DNS reale, gli script continuano ad aggiornare `server-dns` per simulare il comportamento del GSLB.

@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
-source "${SCRIPT_DIR}/lib.sh"
+source "${SCRIPT_DIR}/../common/lib.sh"
 
 backup_name="${1:-}"
 if [ -z "${backup_name}" ]; then

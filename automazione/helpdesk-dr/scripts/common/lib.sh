@@ -2,8 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-# shellcheck source=../config.env
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+# shellcheck source=../../config.env
 source "${ROOT_DIR}/config.env"
 
 lxc_retry() {
@@ -36,9 +36,11 @@ ensure_container_started() {
     return 0
   fi
 
+  echo "Starting container ${container}..."
   lxc_retry start "${container}" || true
   for _ in $(seq 1 60); do
     if container_running "${container}"; then
+      echo "Container ${container} is running."
       return 0
     fi
     sleep 1
@@ -107,15 +109,25 @@ read_dr_state() {
 wait_for_k3s() {
   local target="$1"
   local exec_fn="$2"
+  local attempt
 
   echo "Waiting for k3s on ${target}..."
-  for _ in $(seq 1 120); do
+  for attempt in $(seq 1 120); do
     if "${exec_fn}" kubectl get nodes >/dev/null 2>&1; then
+      echo "k3s is ready on ${target}."
       return 0
+    fi
+    if [ $((attempt % 10)) -eq 0 ]; then
+      echo "Still waiting for k3s on ${target} (${attempt}/120)..."
+      lxc list "${target}" --format compact || true
+      lxc exec "${target}" -- systemctl is-active k3s 2>/dev/null || true
     fi
     sleep 2
   done
   echo "k3s did not become ready on ${target}" >&2
+  lxc list "${target}" --format compact >&2 || true
+  lxc exec "${target}" -- systemctl status k3s --no-pager -l >&2 || true
+  lxc exec "${target}" -- journalctl -u k3s -n 80 --no-pager >&2 || true
   return 1
 }
 

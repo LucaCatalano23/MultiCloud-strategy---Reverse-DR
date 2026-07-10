@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
-source "${SCRIPT_DIR}/lib.sh"
+source "${SCRIPT_DIR}/../common/lib.sh"
 
 if ! lxc_retry info "${ONPREM_K3S_NAME}" >/dev/null 2>&1; then
   echo "Missing on-prem container ${ONPREM_K3S_NAME}. Run automazione/lxc-lab/setup.sh first." >&2

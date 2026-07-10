@@ -108,6 +108,29 @@ def version():
     }
 
 
+@app.get("/dr-status")
+def dr_status():
+    with connect() as conn:
+        conn.execute("select 1")
+
+    marker_present = os.path.exists(DR_READY_FILE)
+    promoted = DR_READY_POLICY == "marker" and marker_present
+    active_site = "on-prem" if promoted else SITE_NAME
+    mode = "dr" if promoted else "normal"
+
+    return {
+        "application": "reverse-dr-helpdesk",
+        "mode": mode,
+        "active_site": active_site,
+        "served_by": SITE_NAME,
+        "site_role": SITE_ROLE,
+        "dr_ready_policy": DR_READY_POLICY,
+        "dr_marker_present": marker_present,
+        "ready_for_traffic": DR_READY_POLICY == "always" or marker_present,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @app.post("/tickets", status_code=201)
 def create_ticket(ticket: TicketIn):
     with connect() as conn:

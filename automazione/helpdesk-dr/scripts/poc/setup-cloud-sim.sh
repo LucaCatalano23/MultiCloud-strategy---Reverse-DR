@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
-source "${SCRIPT_DIR}/lib.sh"
+source "${SCRIPT_DIR}/../common/lib.sh"
 
 if ! lxc_retry network show "${CLOUD_NET}" >/dev/null 2>&1; then
   lxc_retry network create "${CLOUD_NET}" \

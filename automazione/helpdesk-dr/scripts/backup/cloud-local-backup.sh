@@ -2,8 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-# shellcheck source=../config.env
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+# shellcheck source=../../config.env
 source "${ROOT_DIR}/config.env"
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"

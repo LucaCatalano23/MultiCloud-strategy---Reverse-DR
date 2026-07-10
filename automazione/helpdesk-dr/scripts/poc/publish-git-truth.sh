@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
-source "${SCRIPT_DIR}/lib.sh"
+source "${SCRIPT_DIR}/../common/lib.sh"
 
 if ! lxc_retry info "${GIT_SERVER_NAME}" >/dev/null 2>&1; then
   echo "Missing git server ${GIT_SERVER_NAME}. Run automazione/lxc-lab/setup.sh first." >&2
@@ -17,7 +17,7 @@ workdir="$(mktemp -d)"
 trap 'rm -rf "${workdir}"' EXIT
 
 cp -R "${ROOT_DIR}/app" "${workdir}/app"
-cp -R "${ROOT_DIR}/kubernetes" "${workdir}/kubernetes"
+cp -R "${ROOT_DIR}/manifests" "${workdir}/manifests"
 cp -R "${ROOT_DIR}/scripts" "${workdir}/scripts"
 cp "${ROOT_DIR}/config.env" "${workdir}/config.env"
 cp "${ROOT_DIR}/README.md" "${workdir}/README.md"

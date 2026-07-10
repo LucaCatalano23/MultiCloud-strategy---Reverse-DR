@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
-source "${SCRIPT_DIR}/lib.sh"
+source "${SCRIPT_DIR}/../common/lib.sh"
 
 copy_to_container "${CLOUD_K3S_NAME}" "${ROOT_DIR}" "/opt/helpdesk-dr"
 
@@ -14,7 +14,7 @@ Description=Helpdesk cloud primary backup
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/helpdesk-dr
-ExecStart=/bin/bash /opt/helpdesk-dr/scripts/cloud-local-backup.sh
+ExecStart=/bin/bash /opt/helpdesk-dr/scripts/backup/cloud-local-backup.sh
 EOF
 
 exec_cloud bash -lc "cat >/etc/systemd/system/helpdesk-cloud-backup.timer" <<EOF

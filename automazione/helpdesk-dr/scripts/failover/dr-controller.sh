@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
-source "${SCRIPT_DIR}/lib.sh"
+source "${SCRIPT_DIR}/../common/lib.sh"
 
 mode="${1:-${DR_CONTROLLER_MODE:-watch}}"
 failure_threshold="${DR_CONTROLLER_FAILURE_THRESHOLD:-3}"
@@ -30,7 +30,7 @@ trigger_failover() {
   fi
 
   echo "Primary failed health threshold. Running failover playbook..."
-  "${SCRIPT_DIR}/failover-to-onprem.sh"
+  bash "${SCRIPT_DIR}/failover-to-onprem.sh"
 }
 
 watch_loop() {

@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
-source "${SCRIPT_DIR}/lib.sh"
+source "${SCRIPT_DIR}/../common/lib.sh"
 
 if exec_onprem kubectl -n "${APP_NAMESPACE}" get deployment/helpdesk-api >/dev/null 2>&1; then
   pod="$(exec_onprem kubectl -n "${APP_NAMESPACE}" get pod -l app=helpdesk-api -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
