@@ -1,0 +1,73 @@
+---
+- name: Orchestrate reverse DR from the Ansible control node
+  hosts: dr_coordinator
+  gather_facts: true
+  any_errors_fatal: true
+  vars:
+    project_root: /opt/helpdesk-dr
+
+  pre_tasks:
+    - name: Enforce the dedicated DR coordinator
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.hostname == "ansible-node"
+        fail_msg: "The failover playbook must run on ansible-node."
+
+    - name: Read current DR state
+      ansible.builtin.command:
+        argv:
+          - bash
+          - -lc
+          - "source scripts/common/lib.sh && read_dr_state"
+        chdir: "{{ project_root }}"
+      register: dr_state
+      changed_when: false
+
+    - name: Refuse a duplicate failover
+      ansible.builtin.assert:
+        that:
+          - dr_state.stdout | trim != "dr"
+        fail_msg: "DR mode is already active; no second restore will be attempted."
+
+  tasks:
+    - name: Restore and validate the standby data plane
+      block:
+        - name: Restore the latest verified S3 backup on-prem
+          ansible.builtin.command:
+            argv:
+              - bash
+              - scripts/restore/restore-onprem.sh
+              - "{{ backup_key | default('') }}"
+            chdir: "{{ project_root }}"
+          changed_when: true
+
+        - name: Verify the on-prem Lambda DR runtime
+          ansible.builtin.command:
+            argv:
+              - bash
+              - scripts/failover/verify-lambda-dr.sh
+            chdir: "{{ project_root }}"
+          changed_when: false
+
+      rescue:
+        - name: Keep the on-prem application non-ready after a failed preflight
+          ansible.builtin.command:
+            argv:
+              - bash
+              - scripts/failover/demote-onprem.sh
+            chdir: "{{ project_root }}"
+          changed_when: true
+          failed_when: false
+
+        - name: Stop because the DR candidate is not safe to promote
+          ansible.builtin.fail:
+            msg: "Restore or Lambda DR validation failed; DNS was not switched."
+
+    - name: Promote on-prem and switch authoritative DNS
+      ansible.builtin.command:
+        argv:
+          - bash
+          - scripts/failover/promote-onprem.sh
+        chdir: "{{ project_root }}"
+      changed_when: true
+

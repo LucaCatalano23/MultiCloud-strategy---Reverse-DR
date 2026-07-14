@@ -25,7 +25,11 @@ fi
 
 exec_ansible bash -lc "install -d /var/snap/lxd/common/lxd"
 exec_ansible apt-get update
-exec_ansible env DEBIAN_FRONTEND=noninteractive apt-get install -y git ca-certificates curl snapd
+exec_ansible env DEBIAN_FRONTEND=noninteractive apt-get install -y ansible-core awscli git ca-certificates curl gzip snapd
+
+localstack_url="$(discover_localstack_endpoint exec_ansible)"
+exec_ansible install -d -m 0750 /etc/helpdesk-dr
+exec_ansible bash -lc "printf '%s\\n' '${localstack_url}' >/etc/helpdesk-dr/localstack.endpoint && chmod 0600 /etc/helpdesk-dr/localstack.endpoint"
 
 if ! exec_ansible sh -lc "command -v lxc >/dev/null 2>&1"; then
   exec_ansible snap install lxd --channel=5.21/stable
@@ -54,6 +58,7 @@ EOF
 chmod +x /usr/local/bin/helpdesk-dr"
 
 exec_ansible bash -lc "cd ${CONTROL_DIR} && git rev-parse --short HEAD && lxc list --format compact >/dev/null"
+exec_ansible helpdesk-dr backup/install-ansible-backup-mirror-timer
 
 echo "Ansible control node ready."
 echo "Run scripts from ansible-node, for example:"

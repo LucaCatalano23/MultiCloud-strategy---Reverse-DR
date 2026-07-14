@@ -5,11 +5,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "${SCRIPT_DIR}/../common/lib.sh"
 
+require_ansible_coordinator
+
 if exec_onprem kubectl -n "${APP_NAMESPACE}" get deployment/helpdesk-api >/dev/null 2>&1; then
-  pod="$(exec_onprem kubectl -n "${APP_NAMESPACE}" get pod -l app=helpdesk-api -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
-  if [ -n "${pod}" ]; then
-    exec_onprem sh -lc "kubectl -n ${APP_NAMESPACE} exec ${pod} -- rm -f /dr-state/ready" || true
-  fi
+  exec_onprem kubectl -n "${APP_NAMESPACE}" set env deployment/helpdesk-api DR_ACTIVE=false || true
   exec_onprem kubectl -n "${APP_NAMESPACE}" scale deployment/helpdesk-api --replicas="${ONPREM_STANDBY_REPLICAS:-1}" || true
 fi
 

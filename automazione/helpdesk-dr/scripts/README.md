@@ -16,5 +16,5 @@ Usa sempre i percorsi canonici:
 
 ```bash
 bash scripts/poc/healthcheck.sh
-bash scripts/failover/failover-to-onprem.sh
+bash scripts/poc/ansible-run.sh failover/run-ansible-failover
 ```

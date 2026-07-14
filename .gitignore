@@ -7,4 +7,8 @@ crash.log
 __pycache__/
 *.py[cod]
 .venv/
-
+automazione/localstack/.state/
+automazione/lambda-dr/secrets/
+automazione/helpdesk-dr/.state/
+automazione/helpdesk-dr/.restore.*
+automazione/helpdesk-dr/.helpdesk.zone

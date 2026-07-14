@@ -61,6 +61,13 @@ exec_cloud() {
   lxc_retry exec "${CLOUD_K3S_NAME}" -- "$@"
 }
 
+probe_cloud() {
+  if ! container_running "${CLOUD_K3S_NAME}"; then
+    return 1
+  fi
+  lxc_retry exec "${CLOUD_K3S_NAME}" -- "$@"
+}
+
 exec_onprem() {
   ensure_onprem_network_started
   ensure_container_started "${ONPREM_K3S_NAME}"
@@ -81,6 +88,81 @@ exec_ansible() {
   ensure_onprem_network_started
   ensure_container_started "${ANSIBLE_NODE_NAME}"
   lxc_retry exec "${ANSIBLE_NODE_NAME}" -- "$@"
+}
+
+lxd_host_gateway() {
+  local cidr
+  cidr="$(lxc_retry network get lxdbr0 ipv4.address)"
+  if [ -z "${cidr}" ] || [ "${cidr}" = "none" ]; then
+    echo "lxdbr0 does not expose an IPv4 gateway" >&2
+    return 1
+  fi
+  printf '%s\n' "${cidr%%/*}"
+}
+
+localstack_endpoint() {
+  if [ -n "${LOCALSTACK_ENDPOINT:-}" ]; then
+    printf '%s\n' "${LOCALSTACK_ENDPOINT}"
+    return 0
+  fi
+  if [ -s /etc/helpdesk-dr/localstack.endpoint ]; then
+    cat /etc/helpdesk-dr/localstack.endpoint
+    return 0
+  fi
+  printf 'http://%s:4566\n' "$(lxd_host_gateway)"
+}
+
+discover_localstack_endpoint() {
+  local exec_fn="$1"
+  local candidate ip
+  local candidates=("$(lxd_host_gateway)")
+
+  if [ -s /etc/helpdesk-dr/localstack.endpoint ]; then
+    ip="$(sed -E 's#^https?://([^:/]+).*#\1#' /etc/helpdesk-dr/localstack.endpoint)"
+    if [ -n "${ip}" ]; then
+      candidates=("${ip}" "${candidates[@]}")
+    fi
+  fi
+
+  ip="$(ip -4 route show default 2>/dev/null | awk 'NR == 1 { print $3 }')"
+  if [ -n "${ip}" ]; then
+    candidates+=("${ip}")
+  fi
+  ip="$(getent ahostsv4 host.docker.internal 2>/dev/null | awk 'NR == 1 { print $1 }')"
+  if [ -n "${ip}" ]; then
+    candidates+=("${ip}")
+  fi
+
+  for candidate in "${candidates[@]}"; do
+    if "${exec_fn}" curl -fsS --max-time 3 "http://${candidate}:4566/_localstack/health" >/dev/null 2>&1; then
+      printf 'http://%s:4566\n' "${candidate}"
+      return 0
+    fi
+  done
+
+  echo "LocalStack is not reachable from the target LXD node." >&2
+  return 1
+}
+
+aws_local() {
+  AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-test}" \
+  AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-test}" \
+  AWS_DEFAULT_REGION="${AWS_REGION:-eu-west-1}" \
+    aws --endpoint-url "$(localstack_endpoint)" "$@"
+}
+
+require_ansible_coordinator() {
+  if [ "${DR_REQUIRE_ANSIBLE_NODE:-true}" != "true" ]; then
+    return 0
+  fi
+  if [ "$(hostname -s)" != "${ANSIBLE_NODE_NAME}" ]; then
+    cat >&2 <<EOF
+DR orchestration is restricted to ${ANSIBLE_NODE_NAME}.
+Run it through:
+  bash scripts/poc/ansible-run.sh failover/run-ansible-failover
+EOF
+    return 1
+  fi
 }
 
 state_dir() {
@@ -205,7 +287,7 @@ EOF"
 }
 
 cloud_ready() {
-  exec_cloud curl -fsS -H "Host: ${HELPDESK_FQDN}" "http://127.0.0.1/health/ready" >/dev/null
+  probe_cloud curl -fsS -H "Host: ${HELPDESK_FQDN}" "http://127.0.0.1/health/ready" >/dev/null
 }
 
 onprem_ready() {

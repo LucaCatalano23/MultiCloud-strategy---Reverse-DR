@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "${SCRIPT_DIR}/../common/lib.sh"
 
+require_ansible_coordinator
+
 mode="${1:-${DR_CONTROLLER_MODE:-watch}}"
 failure_threshold="${DR_CONTROLLER_FAILURE_THRESHOLD:-3}"
 success_threshold="${DR_CONTROLLER_SUCCESS_THRESHOLD:-2}"
@@ -29,8 +31,8 @@ trigger_failover() {
     return 0
   fi
 
-  echo "Primary failed health threshold. Running failover playbook..."
-  bash "${SCRIPT_DIR}/failover-to-onprem.sh"
+  echo "Primary failed health threshold. Running the Ansible failover playbook..."
+  bash "${SCRIPT_DIR}/run-ansible-failover.sh"
 }
 
 watch_loop() {
@@ -56,14 +58,7 @@ watch_loop() {
 
     if [ "${failures}" -ge "${failure_threshold}" ]; then
       trigger_failover
-      if [ "${mode}" = "oneshot" ]; then
-        return 0
-      fi
       failures=0
-    fi
-
-    if [ "${mode}" = "oneshot" ]; then
-      return 0
     fi
 
     sleep "${interval}"
@@ -71,4 +66,14 @@ watch_loop() {
 }
 
 acquire_lock
+if [ "${mode}" = "oneshot" ]; then
+  if cloud_ready; then
+    echo "primary ready; no failover required"
+  else
+    echo "primary not ready; running one-shot DR evaluation"
+    trigger_failover
+  fi
+  exit 0
+fi
+
 watch_loop

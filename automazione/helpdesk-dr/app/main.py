@@ -6,12 +6,15 @@ import psycopg
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
 
+from automation import AutomationInvocationError, build_automation_gateway
+
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 SITE_ROLE = os.environ.get("SITE_ROLE", "unknown")
 SITE_NAME = os.environ.get("SITE_NAME", "unknown")
 DR_READY_POLICY = os.environ.get("DR_READY_POLICY", "always")
-DR_READY_FILE = os.environ.get("DR_READY_FILE", "/dr-state/ready")
+DR_ACTIVE = os.environ.get("DR_ACTIVE", "false").lower() == "true"
+automation_gateway = build_automation_gateway()
 
 app = FastAPI(title="Reverse DR Helpdesk")
 
@@ -71,8 +74,8 @@ def ready():
 
     if DR_READY_POLICY == "always":
         dr_ready = True
-    elif DR_READY_POLICY == "marker":
-        dr_ready = os.path.exists(DR_READY_FILE)
+    elif DR_READY_POLICY == "flag":
+        dr_ready = DR_ACTIVE
     else:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -86,7 +89,7 @@ def ready():
                 "status": "standby",
                 "site_role": SITE_ROLE,
                 "site_name": SITE_NAME,
-                "reason": "DR marker not present",
+                "reason": "DR_ACTIVE is false",
             },
         )
 
@@ -105,6 +108,7 @@ def version():
         "application": "reverse-dr-helpdesk",
         "site_role": SITE_ROLE,
         "site_name": SITE_NAME,
+        "automation_provider": automation_gateway.provider,
     }
 
 
@@ -113,8 +117,7 @@ def dr_status():
     with connect() as conn:
         conn.execute("select 1")
 
-    marker_present = os.path.exists(DR_READY_FILE)
-    promoted = DR_READY_POLICY == "marker" and marker_present
+    promoted = DR_READY_POLICY == "flag" and DR_ACTIVE
     active_site = "on-prem" if promoted else SITE_NAME
     mode = "dr" if promoted else "normal"
 
@@ -125,8 +128,8 @@ def dr_status():
         "served_by": SITE_NAME,
         "site_role": SITE_ROLE,
         "dr_ready_policy": DR_READY_POLICY,
-        "dr_marker_present": marker_present,
-        "ready_for_traffic": DR_READY_POLICY == "always" or marker_present,
+        "dr_active": DR_ACTIVE,
+        "ready_for_traffic": DR_READY_POLICY == "always" or DR_ACTIVE,
         "checked_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -157,6 +160,31 @@ def list_tickets():
             """
         ).fetchall()
     return [serialize_ticket(row) for row in rows]
+
+
+@app.post("/tickets/{ticket_id}/automation")
+def process_ticket_automation(ticket_id: int):
+    with connect() as conn:
+        row = conn.execute(
+            """
+            select id, title, description, priority, status, created_at
+            from tickets
+            where id = %s
+            """,
+            (ticket_id,),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    ticket = serialize_ticket(row)
+    try:
+        result = automation_gateway.process_ticket(ticket)
+    except AutomationInvocationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+    return {"ticket": ticket, "automation": result.to_dict()}
 
 
 @app.patch("/tickets/{ticket_id}/close")

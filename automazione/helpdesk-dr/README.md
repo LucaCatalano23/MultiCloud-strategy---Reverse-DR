@@ -1,5 +1,7 @@
 # Helpdesk Reverse DR Lab
 
+> La procedura aggiornata con LocalStack EKS/S3/Lambda, backup ogni 10 minuti, mirror off-site e orchestrazione Ansible è in [`../RUNBOOK_SCENARIO_REALE.md`](../RUNBOOK_SCENARIO_REALE.md). Le sezioni storiche sotto descrivono la prima versione della PoC e non rappresentano più l'ordine completo di provisioning.
+
 Questo modulo simula un disaster recovery inverso cloud -> on-premise.
 
 ## Ruoli
@@ -52,8 +54,8 @@ Non ci sono wrapper nella root di `scripts/`: ogni comando va eseguito dal perco
 La readiness dell'app e DR-aware:
 
 - il primario risponde ready quando database e app sono sani;
-- lo standby on-prem risponde live, ma non ready finche non esiste il marker `/dr-state/ready`;
-- `scripts/failover/promote-onprem.sh` crea il marker solo dopo il restore;
+- lo standby on-prem risponde live, ma non ready finche `DR_ACTIVE=false`;
+- `scripts/failover/promote-onprem.sh` rende persistente `DR_ACTIVE=true` nel Deployment solo dopo restore e preflight;
 - K8GB, quando verra installato, dovra basarsi sulla readiness e non su un semplice ping.
 
 L'endpoint `/dr-status` mostra quale sito sta servendo la richiesta:
@@ -73,8 +75,8 @@ Per warm standby lascia `ONPREM_STANDBY_REPLICAS=1` in `config.env`: il pod on-p
 3. `scripts/poc/publish-git-truth.sh`: inizializza il repository applicativo su `git-server`.
 4. `scripts/deploy/deploy-cloud-primary.sh`: deploy helpdesk primary su cloud.
 5. `scripts/deploy/deploy-onprem-standby.sh`: deploy standby on-prem.
-6. `scripts/backup/backup-cloud.sh`: esegue backup dati dal cloud.
-7. `scripts/failover/failover-to-onprem.sh`: restore on-prem + promozione DR + DNS cutover.
+6. `scripts/backup/backup-cloud.sh`: esegue backup dati dal cloud e upload su S3 LocalStack.
+7. `scripts/failover/run-ansible-failover.sh`: playbook Ansible per restore, preflight Lambda, promozione e DNS cutover.
 8. `scripts/failover/dr-controller.sh`: controller automatico che osserva il primario e lancia il failover.
 9. `scripts/poc/healthcheck.sh`: verifica stato cloud, on-prem e DNS.
 
@@ -104,7 +106,7 @@ Dopo il bootstrap, i runbook possono partire da `ansible-node`:
 ```bash
 lxc exec ansible-node -- helpdesk-dr poc/healthcheck
 lxc exec ansible-node -- helpdesk-dr backup/backup-cloud
-lxc exec ansible-node -- helpdesk-dr failover/failover-to-onprem
+lxc exec ansible-node -- helpdesk-dr failover/run-ansible-failover
 ```
 
 Oppure, dalla WSL, usando il comando remoto su `ansible-node`:
@@ -112,7 +114,7 @@ Oppure, dalla WSL, usando il comando remoto su `ansible-node`:
 ```bash
 bash scripts/poc/ansible-run.sh poc/healthcheck
 bash scripts/poc/ansible-run.sh backup/backup-cloud
-bash scripts/poc/ansible-run.sh failover/failover-to-onprem
+bash scripts/poc/ansible-run.sh failover/run-ansible-failover
 ```
 
 In questo modello `git-server` resta il punto di verita e `ansible-node` diventa l'esecutore operativo dei runbook.
@@ -120,19 +122,19 @@ In questo modello `git-server` resta il punto di verita e `ansible-node` diventa
 Failover:
 
 ```bash
-bash scripts/failover/failover-to-onprem.sh
+bash scripts/poc/ansible-run.sh failover/run-ansible-failover
 ```
 
 Failover automatico:
 
 ```bash
-bash scripts/failover/dr-controller.sh
+bash scripts/poc/ansible-run.sh failover/dr-controller
 ```
 
 Per una singola valutazione, utile in demo:
 
 ```bash
-bash scripts/failover/dr-controller.sh oneshot
+bash scripts/poc/ansible-run.sh failover/dr-controller oneshot
 ```
 
 Le soglie sono in `config.env`:
@@ -147,12 +149,12 @@ I manifest PoC sono in `manifests/kubernetes/k8gb/`.
 Scelta architetturale:
 
 - K8GB gestisce DNS/GSLB e usa readiness/liveness per scegliere il sito.
-- Il DR controller gestisce il processo stateful: backup restore, promozione e marker readiness.
+- Il DR controller gestisce il processo stateful: backup restore, promozione e flag dichiarativo di readiness.
 - Questo evita che K8GB diventi un orchestratore applicativo, ma permette failover automatico anche in cold standby.
 
 ## RPO/RTO
 
-- RPO: intervallo tra backup cloud, configurabile in `config.env`.
+- RPO cloud: backup ogni 10 minuti; la copia on-prem e sfalsata di 5 minuti e porta l'RPO teorico off-site a circa 15 minuti.
 - RTO: tempo di restore on-prem + rollout app + aggiornamento DNS.
 
-Questa simulazione e intenzionalmente cloud-provider neutral. Per AWS reale sostituirai `cloud-k3s` con una EC2 Ubuntu con k3s, mantenendo gli stessi manifest e runbook.
+La simulazione usa API AWS compatibili tramite LocalStack. In AWS reale, EKS, S3, IAM e Lambda sostituiscono gli emulatori mantenendo gli stessi confini applicativi e i manifest Kubernetes.

@@ -46,13 +46,13 @@ Su questo nodo girano gli stessi componenti applicativi presenti nel cloud:
 
 Il suo indirizzo principale e `10.10.3.10`.
 
-In condizioni normali questo sito e in warm standby: l'applicazione puo essere deployata e il pod puo essere in esecuzione, ma non deve ricevere traffico utente. Per questo motivo la readiness del servizio on-prem e controllata da un marker:
+In condizioni normali questo sito e in warm standby: l'applicazione puo essere deployata e il pod puo essere in esecuzione, ma non deve ricevere traffico utente. Per questo motivo la readiness del servizio on-prem e controllata dal flag dichiarativo:
 
 ```text
-/dr-state/ready
+DR_ACTIVE=false
 ```
 
-Finche questo file non esiste, `/health/ready` non risponde come pronto. Durante il failover, dopo il restore del database, lo script di promozione crea il marker e rende il sito on-prem eleggibile al traffico.
+Finche il flag e falso, `/health/ready` non risponde come pronto. Durante il failover, dopo restore e preflight, Ansible imposta `DR_ACTIVE=true` sul Deployment e rende il sito on-prem eleggibile al traffico anche dopo un restart del pod.
 
 Quando il DR e attivo, il DNS aziendale viene aggiornato cosi:
 
@@ -168,7 +168,7 @@ che permette di eseguire i runbook direttamente dal nodo operativo, ad esempio:
 ```bash
 lxc exec ansible-node -- helpdesk-dr poc/healthcheck
 lxc exec ansible-node -- helpdesk-dr backup/backup-cloud
-lxc exec ansible-node -- helpdesk-dr failover/failover-to-onprem
+lxc exec ansible-node -- helpdesk-dr failover/run-ansible-failover
 ```
 
 In questo modo `ansible-node` non e piu solo un placeholder: diventa il nodo da cui partono le operazioni di controllo.
@@ -323,7 +323,7 @@ client interno -> DNS aziendale -> helpdesk.azienda.lan -> k3s-datacenter -> hel
 Il flusso operativo di backup e restore e:
 
 ```text
-cloud-k3s/postgres -> backup SQL -> restore su k3s-datacenter/postgres
+cloud-k3s/postgres -> backup compresso + SHA-256 -> S3 LocalStack -> mirror ansible-node -> restore su k3s-datacenter/postgres
 ```
 
 Il flusso di controllo DR e:

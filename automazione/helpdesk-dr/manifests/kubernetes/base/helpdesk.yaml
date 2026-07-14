@@ -13,23 +13,38 @@ spec:
       labels:
         app: helpdesk-api
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: helpdesk-api
-          image: python:3.12-slim
+          image: reverse-dr/helpdesk-api:local
           imagePullPolicy: IfNotPresent
-          command:
-            - sh
-            - -lc
-            - |
-              pip install --no-cache-dir -r /app-src/requirements.txt
-              cp /app-src/main.py /tmp/main.py
-              cd /tmp
-              uvicorn main:app --host 0.0.0.0 --port 8080
           ports:
             - containerPort: 8080
           env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: helpdesk-postgres
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: helpdesk-postgres
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: helpdesk-postgres
+                  key: POSTGRES_DB
             - name: DATABASE_URL
-              value: postgresql://helpdesk:helpdesk-password@postgres.helpdesk.svc.cluster.local:5432/helpdesk
+              value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres.helpdesk.svc.cluster.local:5432/$(POSTGRES_DB)
             - name: SITE_ROLE
               valueFrom:
                 configMapKeyRef:
@@ -45,8 +60,36 @@ spec:
                 configMapKeyRef:
                   name: helpdesk-site
                   key: DR_READY_POLICY
-            - name: DR_READY_FILE
-              value: /dr-state/ready
+            - name: DR_ACTIVE
+              valueFrom:
+                configMapKeyRef:
+                  name: helpdesk-site
+                  key: DR_ACTIVE
+            - name: AUTOMATION_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: helpdesk-automation
+                  key: AUTOMATION_MODE
+            - name: AWS_ENDPOINT_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: helpdesk-automation
+                  key: AWS_ENDPOINT_URL
+                  optional: true
+            - name: AWS_REGION
+              value: eu-west-1
+            - name: AWS_ACCESS_KEY_ID
+              value: test
+            - name: AWS_SECRET_ACCESS_KEY
+              value: test
+            - name: LAMBDA_DR_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: helpdesk-automation
+                  key: LAMBDA_DR_BASE_URL
+                  optional: true
+            - name: HELPDESK_LAMBDA_FUNCTION_NAME
+              value: helpdesk-ticket-processor
           readinessProbe:
             httpGet:
               path: /health/ready
@@ -59,17 +102,27 @@ spec:
               port: 8080
             initialDelaySeconds: 20
             periodSeconds: 15
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
           volumeMounts:
-            - name: source
-              mountPath: /app-src
-            - name: dr-state
-              mountPath: /dr-state
+            - name: tmp
+              mountPath: /tmp
       volumes:
-        - name: source
-          configMap:
-            name: helpdesk-app-source
-        - name: dr-state
-          emptyDir: {}
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
 ---
 apiVersion: v1
 kind: Service

@@ -9,9 +9,10 @@ configMapGenerator:
     literals:
       - SITE_ROLE=standby
       - SITE_NAME=on-prem
-      - DR_READY_POLICY=marker
-  - name: helpdesk-app-source
+      - DR_READY_POLICY=flag
+      - DR_ACTIVE=false
+  - name: helpdesk-automation
     namespace: helpdesk
-    files:
-      - main.py=app/main.py
-      - requirements.txt=app/requirements.txt
+    literals:
+      - AUTOMATION_MODE=lambda-dr
+      - LAMBDA_DR_BASE_URL=http://event-adapter.lambda-dr.svc.cluster.local:8080

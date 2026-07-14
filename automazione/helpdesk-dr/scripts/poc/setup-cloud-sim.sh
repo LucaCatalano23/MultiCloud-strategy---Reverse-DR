@@ -34,7 +34,7 @@ fi
 exec_cloud cloud-init status --wait
 exec_cloud sh -lc "printf 'Acquire::ForceIPv4 \"true\";\n' >/etc/apt/apt.conf.d/99force-ipv4"
 exec_cloud apt-get update
-exec_cloud env DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates iproute2 postgresql-client git
+exec_cloud env DEBIAN_FRONTEND=noninteractive apt-get install -y awscli curl ca-certificates gzip iproute2 postgresql-client git
 exec_cloud install -d "${BACKUP_DIR}"
 prepare_lxc_for_k3s exec_cloud
 
@@ -42,4 +42,12 @@ install_k3s_if_missing "${CLOUD_K3S_NAME}" exec_cloud
 exec_cloud systemctl restart k3s
 wait_for_k3s "${CLOUD_K3S_NAME}" exec_cloud
 
+localstack_state_dir="${ROOT_DIR}/../localstack/.state"
+localstack_kubeconfig="${localstack_state_dir}/cloud-kubeconfig"
+mkdir -p "${localstack_state_dir}"
+lxc_retry file pull "${CLOUD_K3S_NAME}/etc/rancher/k3s/k3s.yaml" "${localstack_kubeconfig}"
+sed -i "s#https://127.0.0.1:6443#https://${CLOUD_K3S_IP}:6443#" "${localstack_kubeconfig}"
+chmod 600 "${localstack_kubeconfig}"
+
 echo "cloud-sim ready: ${CLOUD_K3S_NAME} ${CLOUD_K3S_IP}"
+echo "EKS provider kubeconfig exported to ${localstack_kubeconfig}"

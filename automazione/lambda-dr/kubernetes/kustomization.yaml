@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - event-adapter.yaml
+  - helpdesk-ticket-processor.yaml
   - sample-orders-function.yaml
   - sample-payments-function.yaml
   - sample-reports-function.yaml

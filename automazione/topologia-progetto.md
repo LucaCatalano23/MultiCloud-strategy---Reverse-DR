@@ -1,5 +1,7 @@
 # Topologia progetto Reverse DR
 
+> Evoluzione production-like: LocalStack espone le API EKS, S3, IAM e Lambda; `cloud-k3s` e il data plane associato a EKS; `ansible-node` mantiene un mirror off-cloud dei backup e orchestra il failover. Il runbook operativo aggiornato e in [`RUNBOOK_SCENARIO_REALE.md`](RUNBOOK_SCENARIO_REALE.md).
+
 Questo documento descrive la topologia LXC/Kubernetes della PoC: rete on-premise, cloud simulato, servizi applicativi, DNS, Git, backup e flusso di disaster recovery.
 
 ## Vista completa
@@ -45,7 +47,7 @@ flowchart LR
     git["git-server\n10.10.3.70\nbare repo helpdesk-dr.git"]
     ansible["ansible-node\n10.10.3.100\nAnsible + DR controller"]
     onpreming["Traefik Ingress\nhelpdesk.azienda.lan\n10.10.3.10"]
-    onpremapi["Pod helpdesk-api\nsite_role=standby\n/health/ready marker"]
+    onpremapi["Pod helpdesk-api\nsite_role=standby\n/health/ready DR_ACTIVE"]
     onprempg["Pod postgres\nDB restored da backup"]
     onpremk3s --> onpreming
     onpreming --> onpremapi
@@ -121,7 +123,7 @@ flowchart TB
   subgraph onprem["Cluster k3s-datacenter 10.10.3.10"]
     oing["Ingress Traefik\nhost helpdesk.azienda.lan"]
     osvc["Service helpdesk-api:80"]
-    oapi["Deployment helpdesk-api\nSITE_ROLE=standby\nDR_READY_POLICY=marker\nready solo con /dr-state/ready"]
+    oapi["Deployment helpdesk-api\nSITE_ROLE=standby\nDR_READY_POLICY=flag\nready solo con DR_ACTIVE=true"]
     opgsvc["Service postgres:5432"]
     opg["Deployment postgres\nPVC postgres-data 2Gi\nrestore da backup"]
     oing --> osvc --> oapi --> opgsvc --> opg
@@ -175,7 +177,7 @@ sequenceDiagram
   Controller->>OnPrem: restore-onprem.sh
   OnPrem->>OnPrem: scala app, restore Postgres
   Controller->>OnPrem: promote-onprem.sh
-  OnPrem->>OnPrem: crea /dr-state/ready
+  OnPrem->>OnPrem: imposta DR_ACTIVE=true
   Controller->>DNS: helpdesk.azienda.lan -> 10.10.3.10
   Client->>DNS: resolve helpdesk.azienda.lan
   DNS-->>Client: A 10.10.3.10
@@ -209,8 +211,8 @@ sequenceDiagram
 | `backup-cloud.sh` | host WSL / ansible-node operativo | genera backup SQL da Postgres cloud |
 | `cloud-local-backup.sh` | `cloud-k3s` via timer | backup periodico locale nel cloud simulato |
 | `restore-onprem.sh` | host WSL / ansible-node operativo | copia ultimo backup e ripristina Postgres on-prem |
-| `promote-onprem.sh` | host WSL / ansible-node operativo | scala app on-prem, crea marker `/dr-state/ready`, aggiorna DNS |
-| `demote-onprem.sh` | host WSL / ansible-node operativo | rimuove marker DR e riporta on-prem in standby |
+| `promote-onprem.sh` | `ansible-node` | scala app on-prem, imposta `DR_ACTIVE=true`, verifica readiness e aggiorna DNS |
+| `demote-onprem.sh` | `ansible-node` | imposta `DR_ACTIVE=false` e riporta on-prem in standby |
 | `dr-controller.sh` | host WSL / ansible-node operativo | monitora primary e attiva failover automatico |
 | K8GB manifest | entrambi i cluster, futuro step | GSLB DNS failover basato su readiness |
 
@@ -223,4 +225,3 @@ La PoC separa tre responsabilita:
 3. Stato applicativo: backup/restore Postgres, non replica active-active.
 
 Questa separazione e intenzionale: K8GB decide quale sito pubblicare, ma non deve eseguire restore o playbook. La readiness on-prem diventa positiva solo dopo restore e promozione, quindi il traffico non viene mandato a un sito DR non pronto.
-
