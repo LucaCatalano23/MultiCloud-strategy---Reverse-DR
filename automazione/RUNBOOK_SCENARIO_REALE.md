@@ -7,8 +7,8 @@ La PoC separa i failure domain e mantiene lo stesso contratto applicativo nei du
 ```mermaid
 flowchart LR
   subgraph cloud["Cloud AWS simulato"]
-    ls["LocalStack\nEKS API + S3 + Lambda"]
-    eks["cloud-k3s\ndata plane EKS"]
+    ls["LocalStack\nS3 + Lambda + IAM/EC2"]
+    eks["cloud-k3s\ndata plane Kubernetes EKS-like"]
     pgc["PostgreSQL primary"]
     appc["Helpdesk primary\nAutomation: AWS Lambda"]
     ls --- eks
@@ -33,11 +33,56 @@ flowchart LR
   ans -->|"restore, preflight, promote, DNS"| appdr
 ```
 
-LocalStack EKS richiede un piano Ultimate, Enterprise o Student. La modalità `EKS_K8S_PROVIDER=local` registra `cloud-k3s` come data plane associato all'API EKS simulata. Per evitare problemi di routing tra Docker Desktop e le reti LXD, eseguire Docker Engine nella stessa distribuzione Ubuntu WSL che ospita LXD.
+L'API EKS di LocalStack è disponibile soltanto con il piano Ultimate. La modalità predefinita del progetto (`LOCALSTACK_EKS_API_ENABLED=false`) usa quindi `cloud-k3s` come data plane Kubernetes EKS-like e affida a LocalStack S3, Lambda, IAM, EC2 e STS. Questo mantiene portabili manifest, workload, backup e failover senza dipendere da una licenza Ultimate, ma non simula le chiamate del control plane AWS `eks:*`. Con una licenza compatibile è possibile abilitare anche tali API impostando `LOCALSTACK_EKS_API_ENABLED=true`.
+
+Per evitare problemi di routing tra Docker Desktop e le reti LXD, eseguire Docker Engine nella stessa distribuzione Ubuntu WSL che ospita LXD.
 
 ## Ordine di provisioning
 
 Tutti i comandi seguenti vanno eseguiti da Ubuntu WSL nella root del repository.
+
+### 0. Docker Engine nativo nella distribuzione WSL
+
+Non abilitare l'integrazione Docker Desktop per la distribuzione Ubuntu usata dal lab e non eseguire contemporaneamente Docker Desktop e Docker Engine nativo. LocalStack deve condividere la rete della distribuzione che ospita LXD, altrimenti il control plane EKS non può raggiungere `cloud-k3s`.
+
+Installa Docker Engine e Compose v2 dal repository ufficiale Docker:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+sudo tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt-get update
+sudo apt-get install -y \
+  docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"
+newgrp docker
+```
+
+Il gruppo `docker` equivale operativamente a privilegi root sulla macchina. È una scelta accettabile per il nodo di laboratorio dedicato, non per un host multiutente non fidato.
+
+Verifica il runtime prima di proseguire:
+
+```bash
+systemctl is-active docker
+docker info --format '{{.OperatingSystem}}'
+docker compose version
+```
+
+Il primo comando deve restituire `active`; il secondo deve identificare Ubuntu e non `Docker Desktop`.
 
 ### 1. Rete on-prem
 
@@ -64,19 +109,31 @@ Il setup cloud esporta anche il kubeconfig X509 in `automazione/localstack/.stat
 ### 3. Control plane AWS simulato
 
 ```bash
-export LOCALSTACK_AUTH_TOKEN='<token LocalStack>'
+read -rsp 'LocalStack Auth Token: ' LOCALSTACK_AUTH_TOKEN
+printf '\n'
+export LOCALSTACK_AUTH_TOKEN
 cd automazione/localstack
 bash scripts/start.sh
 cd ../..
 ```
 
+Il token reale inizia con `ls-` e deve appartenere a una licenza attiva assegnata all'utente. L'acquisizione nascosta tramite `read -s` evita di scrivere il segreto nella history della shell; il token rimane soltanto nell'ambiente della sessione e non deve essere salvato nel repository.
+
 L'init idempotente crea:
 
 - VPC `10.20.0.0/16` e due subnet/AZ;
-- cluster EKS logico `helpdesk-cloud`;
 - bucket S3 versionato `reverse-dr-helpdesk-backups`;
 - Lambda cloud `helpdesk-ticket-processor`;
-- ruoli IAM per EKS e Lambda.
+- ruolo IAM dedicato alla Lambda.
+
+Il cluster `cloud-k3s` rappresenta il data plane Kubernetes cloud: i nodi ricevono label di regione, availability zone, instance type e `reverse-dr.io/eks-simulator=true`. Se la licenza LocalStack include EKS, avviare invece con:
+
+```bash
+export LOCALSTACK_EKS_API_ENABLED=true
+bash scripts/start.sh
+```
+
+In tale modalità l'init crea anche il cluster EKS logico `helpdesk-cloud` e il relativo ruolo IAM.
 
 ### 4. Workload cloud e runtime on-prem
 
@@ -108,6 +165,10 @@ bash scripts/poc/ansible-run.sh poc/healthcheck
 ```
 
 Il bootstrap pubblica il repository sul Git server, prepara `/opt/helpdesk-dr` su `ansible-node`, installa AWS CLI/Ansible e abilita il timer di mirror. Il mirror gira ai minuti `05,15,25,35,45,55`, fuori dal failure domain cloud.
+
+Il bootstrap abilita inoltre `boot.autostart=true` su `ansible-node`, così il coordinatore DR riparte automaticamente dopo un riavvio del daemon LXD o di WSL. Lo stop di `cloud-k3s` non arresta né riavvia il nodo Ansible.
+
+Per coordinare LXD, `ansible-node` usa solo il client dello snap: il relativo daemon annidato viene disabilitato e un proxy collega il client al socket del daemon host. Questo accesso equivale a privilegi root sull'host LXD: è un trust boundary intenzionale del lab e richiede che il nodo Ansible sia dedicato, amministrato e non accessibile a utenti non fidati.
 
 ## Verifica funzionale prima del DR
 
@@ -199,7 +260,8 @@ Per sostenere un RPO on-prem effettivo di 10 minuti occorre sostituire il pollin
 
 ## Limiti dichiarati
 
-- LocalStack riproduce le API e il comportamento utile alla PoC, non l'HA fisica multi-AZ di AWS EKS.
+- Nella modalità predefinita LocalStack riproduce S3, Lambda, IAM, EC2 e STS; `cloud-k3s` riproduce il data plane Kubernetes ma non le API gestite `eks:*`, disponibili soltanto nel piano LocalStack Ultimate.
+- Anche abilitando l'API EKS di LocalStack, la PoC non riproduce l'HA fisica multi-AZ di AWS EKS.
 - `cloud-k3s` e `k3s-datacenter` sono cluster mononodo.
 - PostgreSQL usa dump/restore, non replica WAL o managed RDS.
 - Il cutback resta manuale perché manca la replica dei dati modificati durante il periodo DR verso il primary.

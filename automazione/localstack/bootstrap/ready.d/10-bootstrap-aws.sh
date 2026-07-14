@@ -6,15 +6,30 @@ account_id="000000000000"
 bucket="${BACKUP_S3_BUCKET:-reverse-dr-helpdesk-backups}"
 cluster_name="${EKS_CLUSTER_NAME:-helpdesk-cloud}"
 lambda_name="${HELPDESK_LAMBDA_FUNCTION_NAME:-helpdesk-ticket-processor}"
+eks_api_enabled="${LOCALSTACK_EKS_API_ENABLED:-false}"
 
-role_trust_policy='{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":["eks.amazonaws.com","lambda.amazonaws.com"]},"Action":"sts:AssumeRole"}]}'
+lambda_role_trust_policy='{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
+eks_role_trust_policy='{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"eks.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
+
+case "${eks_api_enabled}" in
+  true|false) ;;
+  *)
+    echo "LOCALSTACK_EKS_API_ENABLED must be true or false, got: ${eks_api_enabled}" >&2
+    exit 1
+    ;;
+esac
 
 ensure_role() {
   local role_name="$1"
+  local trust_policy="$2"
   if ! awslocal iam get-role --role-name "${role_name}" >/dev/null 2>&1; then
     awslocal iam create-role \
       --role-name "${role_name}" \
-      --assume-role-policy-document "${role_trust_policy}" >/dev/null
+      --assume-role-policy-document "${trust_policy}" >/dev/null
+  else
+    awslocal iam update-assume-role-policy \
+      --role-name "${role_name}" \
+      --policy-document "${trust_policy}" >/dev/null
   fi
 }
 
@@ -113,11 +128,18 @@ PY
   awslocal lambda wait function-active-v2 --function-name "${lambda_name}"
 }
 
-ensure_role reverse-dr-eks-role
-ensure_role reverse-dr-lambda-role
+ensure_role reverse-dr-lambda-role "${lambda_role_trust_policy}"
 ensure_bucket
 subnets="$(ensure_network)"
-ensure_eks_cluster "${subnets}"
+
+if [ "${eks_api_enabled}" = "true" ]; then
+  ensure_role reverse-dr-eks-role "${eks_role_trust_policy}"
+  ensure_eks_cluster "${subnets}"
+  kubernetes_mode="LocalStack EKS API (${cluster_name})"
+else
+  kubernetes_mode="external cloud-k3s EKS-like data plane"
+fi
+
 ensure_lambda
 
-echo "LocalStack AWS cloud ready: EKS=${cluster_name}, S3=${bucket}, Lambda=${lambda_name}"
+echo "LocalStack AWS cloud ready: Kubernetes=${kubernetes_mode}, S3=${bucket}, Lambda=${lambda_name}"

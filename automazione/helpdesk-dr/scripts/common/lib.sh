@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+HELPDESK_DR_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${HELPDESK_DR_LIB_DIR}/../.." && pwd)"
 # shellcheck source=../../config.env
 source "${ROOT_DIR}/config.env"
 
@@ -90,6 +90,12 @@ exec_ansible() {
   lxc_retry exec "${ANSIBLE_NODE_NAME}" -- "$@"
 }
 
+exec_ansible_once() {
+  ensure_onprem_network_started
+  ensure_container_started "${ANSIBLE_NODE_NAME}"
+  lxc exec "${ANSIBLE_NODE_NAME}" -- "$@"
+}
+
 lxd_host_gateway() {
   local cidr
   cidr="$(lxc_retry network get lxdbr0 ipv4.address)"
@@ -142,6 +148,71 @@ discover_localstack_endpoint() {
 
   echo "LocalStack is not reachable from the target LXD node." >&2
   return 1
+}
+
+install_aws_cli_v2() {
+  local exec_fn="$1"
+  local existing_version machine_arch installer_arch installer_name installer_url
+
+  # The probe always exits successfully so an expected "not installed" result
+  # does not trigger lxc_retry's infrastructure-failure backoff.
+  existing_version="$("${exec_fn}" sh -lc 'if command -v aws >/dev/null 2>&1; then aws --version 2>&1; fi')"
+  if [[ "${existing_version}" == aws-cli/2.* ]]; then
+    if [ "${AWS_CLI_VERSION:-latest}" = "latest" ] ||
+      [[ "${existing_version}" == "aws-cli/${AWS_CLI_VERSION} "* ]]; then
+      printf '%s\n' "${existing_version}"
+      return 0
+    fi
+  fi
+
+  machine_arch="$("${exec_fn}" uname -m)"
+  case "${machine_arch}" in
+    x86_64|amd64)
+      installer_arch="x86_64"
+      ;;
+    aarch64|arm64)
+      installer_arch="aarch64"
+      ;;
+    *)
+      echo "AWS CLI v2 is not supported by this installer on architecture: ${machine_arch}" >&2
+      return 1
+      ;;
+  esac
+
+  installer_name="awscli-exe-linux-${installer_arch}"
+  if [ "${AWS_CLI_VERSION:-latest}" = "latest" ]; then
+    installer_url="https://awscli.amazonaws.com/${installer_name}.zip"
+  else
+    installer_url="https://awscli.amazonaws.com/${installer_name}-${AWS_CLI_VERSION}.zip"
+  fi
+
+  echo "Installing AWS CLI v2 from the official AWS installer (${installer_arch})..."
+  "${exec_fn}" bash -s -- "${installer_url}" <<'AWS_CLI_INSTALL'
+set -euo pipefail
+
+installer_url="$1"
+work_dir="$(mktemp -d)"
+trap 'rm -rf "${work_dir}"' EXIT
+
+curl --fail --location \
+  --retry 5 \
+  --retry-delay 2 \
+  --connect-timeout 15 \
+  "${installer_url}" \
+  --output "${work_dir}/awscliv2.zip"
+unzip -q "${work_dir}/awscliv2.zip" -d "${work_dir}"
+
+install_args=(
+  --bin-dir /usr/local/bin
+  --install-dir /usr/local/aws-cli
+)
+if [ -x /usr/local/aws-cli/v2/current/bin/aws ]; then
+  install_args+=(--update)
+fi
+
+"${work_dir}/aws/install" "${install_args[@]}"
+/usr/local/bin/aws --version
+AWS_CLI_INSTALL
 }
 
 aws_local() {

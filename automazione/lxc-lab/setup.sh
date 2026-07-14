@@ -138,8 +138,9 @@ init_container() {
 configure_container_runtime() {
   local name="$1"
   local kind="$2"
+  local autostart="${3:-false}"
 
-  lxc_retry config set "${name}" boot.autostart false
+  lxc_retry config set "${name}" boot.autostart "${autostart}"
   lxc_retry config set "${name}" security.nesting true
 
   if [ "${kind}" = "openwrt-router" ] || [ "${kind}" = "k3s-node" ]; then
@@ -652,7 +653,9 @@ main() {
   create_network "${NET_TRANSIT}" "10.10.4.254/24" "10.10.4.2"
 
   init_container ansible-node "${UBUNTU_IMAGE}"
-  configure_container_runtime ansible-node ubuntu-service
+  # The DR coordinator must survive LXD/WSL restarts independently from the
+  # simulated cloud failure domain.
+  configure_container_runtime ansible-node ubuntu-service true
   attach_nic ansible-node "${NET_DATACENTER}" eth0 10.10.3.100
   attach_provisioning_nic ansible-node
 

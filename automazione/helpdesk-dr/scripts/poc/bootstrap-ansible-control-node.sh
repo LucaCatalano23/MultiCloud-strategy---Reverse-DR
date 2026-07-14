@@ -10,52 +10,67 @@ LXD_SOCKET="/var/snap/lxd/common/lxd/unix.socket"
 
 ensure_container_started "${ANSIBLE_NODE_NAME}"
 ensure_container_started "${GIT_SERVER_NAME}"
+lxc_retry config set "${ANSIBLE_NODE_NAME}" boot.autostart true
 
 bash "${SCRIPT_DIR}/publish-git-truth.sh"
 
-if ! lxc_retry config device show "${ANSIBLE_NODE_NAME}" | grep -q '^lxd-socket:'; then
-  lxc_retry config device add "${ANSIBLE_NODE_NAME}" lxd-socket proxy \
-    "listen=unix:${LXD_SOCKET}" \
-    "connect=unix:${LXD_SOCKET}" \
-    bind=container \
-    uid=0 \
-    gid=0 \
-    mode=0660
+# Free the socket path before installing or reconciling the LXD client. A
+# previous interrupted run may have left the host proxy device configured.
+if lxc_retry config device show "${ANSIBLE_NODE_NAME}" | grep -q '^lxd-socket:'; then
+  lxc_retry config device remove "${ANSIBLE_NODE_NAME}" lxd-socket
 fi
 
-exec_ansible bash -lc "install -d /var/snap/lxd/common/lxd"
 exec_ansible apt-get update
-exec_ansible env DEBIAN_FRONTEND=noninteractive apt-get install -y ansible-core awscli git ca-certificates curl gzip snapd
+exec_ansible env DEBIAN_FRONTEND=noninteractive apt-get install -y ansible-core git ca-certificates curl gzip snapd unzip
+install_aws_cli_v2 exec_ansible
+
+lxd_snap_state="$(exec_ansible sh -lc 'if snap list lxd >/dev/null 2>&1; then printf ready; fi')"
+if [ "${lxd_snap_state}" != "ready" ]; then
+  exec_ansible snap install lxd --channel=5.21/stable
+fi
+
+# ansible-node needs only the LXD client. Stop and disable its nested daemon so
+# that the host socket proxy can own the canonical Unix-socket path.
+exec_ansible snap stop --disable lxd
+exec_ansible ln -sfn /snap/bin/lxc /usr/local/bin/lxc
+exec_ansible rm -f "${LXD_SOCKET}"
+exec_ansible install -d -m 0755 "$(dirname "${LXD_SOCKET}")"
+
+# With bind=instance, LXD creates the listening socket inside ansible-node and
+# forwards client requests to the LXD daemon running on the host.
+lxc_retry config device add "${ANSIBLE_NODE_NAME}" lxd-socket proxy \
+  "listen=unix:${LXD_SOCKET}" \
+  "connect=unix:${LXD_SOCKET}" \
+  bind=instance \
+  uid=0 \
+  gid=0 \
+  mode=0660
+
+socket_state="$(exec_ansible sh -lc "if [ -S '${LXD_SOCKET}' ]; then printf ready; fi")"
+if [ "${socket_state}" != "ready" ]; then
+  echo "LXD socket proxy was configured but is not available inside ${ANSIBLE_NODE_NAME}." >&2
+  exit 1
+fi
+exec_ansible lxc list --format compact >/dev/null
 
 localstack_url="$(discover_localstack_endpoint exec_ansible)"
 exec_ansible install -d -m 0750 /etc/helpdesk-dr
 exec_ansible bash -lc "printf '%s\\n' '${localstack_url}' >/etc/helpdesk-dr/localstack.endpoint && chmod 0600 /etc/helpdesk-dr/localstack.endpoint"
 
-if ! exec_ansible sh -lc "command -v lxc >/dev/null 2>&1"; then
-  exec_ansible snap install lxd --channel=5.21/stable
-fi
-
 exec_ansible bash -lc "rm -rf ${CONTROL_DIR} && git clone ${APP_REPOSITORY_URL} ${CONTROL_DIR}"
-exec_ansible bash -lc "cat >/usr/local/bin/helpdesk-dr <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-script_path=\"\${1:-}\"
-if [ -z \"\${script_path}\" ]; then
-  echo "Usage: helpdesk-dr <category/script-without-.sh> [args...]" >&2
-  echo "Example: helpdesk-dr poc/healthcheck" >&2
-  exit 1
-fi
-case \"\${script_path}\" in
-  */../*|../*|/*|*.sh)
-    echo "Invalid script path: \${script_path}" >&2
-    exit 1
-    ;;
-esac
-shift
-cd ${CONTROL_DIR}
-exec bash \"scripts/\${script_path}.sh\" \"\$@\"
-EOF
-chmod +x /usr/local/bin/helpdesk-dr"
+exec_ansible bash -lc "
+  set -euo pipefail
+  test -f ${CONTROL_DIR}/ansible/ansible.cfg
+  test -f ${CONTROL_DIR}/ansible/inventory.ini
+  test -f ${CONTROL_DIR}/ansible/playbooks/failover.yml
+  cd ${CONTROL_DIR}
+  ANSIBLE_CONFIG=ansible/ansible.cfg ansible-playbook \
+    -i ansible/inventory.ini \
+    ansible/playbooks/failover.yml \
+    --syntax-check
+"
+exec_ansible chmod 0755 "${CONTROL_DIR}/scripts/poc/helpdesk-dr.sh"
+exec_ansible ln -sfn "${CONTROL_DIR}/scripts/poc/helpdesk-dr.sh" /usr/local/bin/helpdesk-dr
 
 exec_ansible bash -lc "cd ${CONTROL_DIR} && git rev-parse --short HEAD && lxc list --format compact >/dev/null"
 exec_ansible helpdesk-dr backup/install-ansible-backup-mirror-timer

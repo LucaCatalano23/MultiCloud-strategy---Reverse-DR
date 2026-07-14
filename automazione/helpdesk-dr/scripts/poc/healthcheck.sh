@@ -27,7 +27,9 @@ if [ "${mode}" = "dr" ]; then
 else
   check "cloud k3s nodes" probe_cloud kubectl get nodes
   check "LocalStack gateway" curl -fsS "$(localstack_endpoint)/_localstack/health"
-  check "LocalStack EKS control plane" aws_local eks describe-cluster --name "${EKS_CLUSTER_NAME}"
+  if [ "${LOCALSTACK_EKS_API_ENABLED:-false}" = "true" ]; then
+    check "LocalStack EKS control plane" aws_local eks describe-cluster --name "${EKS_CLUSTER_NAME}"
+  fi
   check "LocalStack S3 backup bucket" aws_local s3api head-bucket --bucket "${BACKUP_S3_BUCKET}"
   check "cloud AWS Lambda" aws_local lambda get-function --function-name "${HELPDESK_LAMBDA_FUNCTION_NAME}"
   check "cloud helpdesk live" probe_cloud curl -fsS -H "Host: ${HELPDESK_FQDN}" "http://127.0.0.1/health/live"

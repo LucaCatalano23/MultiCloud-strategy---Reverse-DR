@@ -95,7 +95,7 @@ bash scripts/backup/install-cloud-backup-timer.sh
 
 ## Esecuzione da ansible-node
 
-Per rendere `ansible-node` il control node reale, pubblica prima il repository su `git-server`, clona il source of truth su `ansible-node` e abilita il client LXD verso il socket dell'host:
+Per rendere `ansible-node` il control node reale, pubblica prima il repository su `git-server`, clona il source of truth su `ansible-node` e abilita il client LXD verso il socket dell'host. Il bootstrap disabilita il daemon LXD annidato nello snap, perché sul control node serve soltanto il client:
 
 ```bash
 bash scripts/poc/bootstrap-ansible-control-node.sh
