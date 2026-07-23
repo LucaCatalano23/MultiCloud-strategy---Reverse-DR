@@ -24,9 +24,6 @@ export function TicketTable({
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [sortDescending, setSortDescending] = useState(true)
-  const [checkedIds, setCheckedIds] = useState<ReadonlySet<string>>(
-    () => new Set(tickets.slice(0, 1).map((ticket) => ticket.id)),
-  )
 
   const sortedTickets = useMemo(
     () =>
@@ -40,31 +37,10 @@ export function TicketTable({
   const safePage = Math.min(page, pageCount)
   const startIndex = (safePage - 1) * pageSize
   const visibleTickets = sortedTickets.slice(startIndex, startIndex + pageSize)
-  const visibleIds = visibleTickets.map((ticket) => ticket.id)
-  const allVisibleChecked =
-    visibleIds.length > 0 && visibleIds.every((ticketId) => checkedIds.has(ticketId))
 
   useEffect(() => {
     setPage(1)
   }, [tickets])
-
-  const toggleAllVisible = () => {
-    setCheckedIds((current) => {
-      const next = new Set(current)
-      if (allVisibleChecked) visibleIds.forEach((id) => next.delete(id))
-      else visibleIds.forEach((id) => next.add(id))
-      return next
-    })
-  }
-
-  const toggleChecked = (ticketId: string) => {
-    setCheckedIds((current) => {
-      const next = new Set(current)
-      if (next.has(ticketId)) next.delete(ticketId)
-      else next.add(ticketId)
-      return next
-    })
-  }
 
   const firstShown = tickets.length === 0 ? 0 : startIndex + 1
   const lastShown = Math.min(startIndex + pageSize, tickets.length)
@@ -76,14 +52,6 @@ export function TicketTable({
           <caption className="sr-only">Ticket operativi</caption>
           <thead>
             <tr>
-              <th className="checkbox-column" scope="col">
-                <input
-                  type="checkbox"
-                  aria-label="Seleziona ticket visibili"
-                  checked={allVisibleChecked}
-                  onChange={toggleAllVisible}
-                />
-              </th>
               <th scope="col">ID</th>
               <th scope="col">Titolo</th>
               <th scope="col">Priorità</th>
@@ -109,7 +77,7 @@ export function TicketTable({
           <tbody>
             {visibleTickets.length === 0 ? (
               <tr>
-                <td className="empty-table" colSpan={7}>
+                <td className="empty-table" colSpan={6}>
                   Nessun ticket corrisponde ai filtri selezionati.
                 </td>
               </tr>
@@ -129,15 +97,6 @@ export function TicketTable({
                     }
                   }}
                 >
-                  <td className="checkbox-column">
-                    <input
-                      type="checkbox"
-                      aria-label={`Seleziona ${ticket.id}`}
-                      checked={checkedIds.has(ticket.id)}
-                      onClick={(event) => event.stopPropagation()}
-                      onChange={() => toggleChecked(ticket.id)}
-                    />
-                  </td>
                   <td className="ticket-id">{ticket.id}</td>
                   <td className="ticket-title">{ticket.title}</td>
                   <td>

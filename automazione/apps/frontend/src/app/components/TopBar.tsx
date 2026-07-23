@@ -9,6 +9,7 @@ interface TopBarProps {
   readonly searchEnabled: boolean
   readonly site: SiteContext
   readonly user: AuthenticatedUser
+  readonly highPriorityCount: number
   readonly onQueryChange: (query: string) => void
   readonly onOpenMobileNav: () => void
   readonly onLogout: () => Promise<void>
@@ -20,6 +21,7 @@ export function TopBar({
   searchEnabled,
   site,
   user,
+  highPriorityCount,
   onQueryChange,
   onOpenMobileNav,
   onLogout,
@@ -71,12 +73,22 @@ export function TopBar({
             onClick={() => setNotificationsOpen((open) => !open)}
           >
             <Bell size={18} aria-hidden="true" />
-            <span className="notification-dot" aria-hidden="true" />
+            {highPriorityCount > 0 ? (
+              <span className="notification-dot" aria-hidden="true" />
+            ) : null}
           </button>
           {notificationsOpen ? (
             <div className="topbar-popover topbar-popover--notifications" role="status">
-              <strong>2 notifiche operative</strong>
-              <span>Un ticket ad alta priorità richiede attenzione.</span>
+              {highPriorityCount > 0 ? (
+                <>
+                  <strong>
+                    {highPriorityCount} ticket ad alta priorità
+                  </strong>
+                  <span>Richiedono attenzione operativa.</span>
+                </>
+              ) : (
+                <strong>Nessuna notifica operativa</strong>
+              )}
             </div>
           ) : null}
         </div>

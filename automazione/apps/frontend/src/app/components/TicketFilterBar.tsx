@@ -23,12 +23,19 @@ export function TicketFilterBar({
   const reset = () =>
     onChange({ query: '', status: 'all', priority: 'all', assignee: 'all', service: 'all' })
 
+  const activeCount =
+    (filters.query.trim() !== '' ? 1 : 0) +
+    (filters.status !== 'all' ? 1 : 0) +
+    (filters.priority !== 'all' ? 1 : 0) +
+    (filters.assignee !== 'all' ? 1 : 0) +
+    (filters.service !== 'all' ? 1 : 0)
+
   return (
     <div className="filter-bar">
-      <button className="filter-summary" type="button" aria-label="Filtri disponibili: 2">
+      <button className="filter-summary" type="button" aria-label={`Filtri attivi: ${activeCount}`}>
         <Filter size={16} aria-hidden="true" />
         <span>Filtri</span>
-        <span className="filter-count">2</span>
+        {activeCount > 0 ? <span className="filter-count">{activeCount}</span> : null}
       </button>
 
       <label className="select-control">

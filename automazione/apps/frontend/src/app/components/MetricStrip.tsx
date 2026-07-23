@@ -1,51 +1,66 @@
 import { Bot, ClipboardList, Clock3, Flag } from 'lucide-react'
+import { useMemo } from 'react'
+import type { Ticket } from '../../domain/types'
 
-const metrics = [
-  {
-    label: 'Ticket aperti',
-    value: '128',
-    trend: '↓',
-    detail: '−12% vs ieri',
-    tone: 'blue',
-    icon: ClipboardList,
-  },
-  {
-    label: 'Alta priorità',
-    value: '19',
-    trend: '↗',
-    detail: '+3 vs ieri',
-    tone: 'red',
-    icon: Flag,
-  },
-  {
-    label: 'SLA a rischio',
-    value: '7',
-    trend: '↗',
-    detail: '+2 vs ieri',
-    tone: 'orange',
-    icon: Clock3,
-  },
-  {
-    label: 'Automazioni oggi',
-    value: '24',
-    trend: '↗',
-    detail: '+8 vs ieri',
-    tone: 'green',
-    icon: Bot,
-  },
-] as const
+interface MetricStripProps {
+  readonly tickets: readonly Ticket[]
+}
 
-export function MetricStrip() {
+// Placeholder esplicito per le metriche che non hanno ancora una fonte dati nel
+// BFF (SLA non è modellato; le automazioni dipendono dal ponte eventi
+// ticket→automation non ancora implementato). Meglio dichiarare l'assenza che
+// mostrare un numero finto accanto a dati reali.
+const UNAVAILABLE = '—'
+
+export function MetricStrip({ tickets }: MetricStripProps) {
+  const openCount = useMemo(
+    () => tickets.filter((ticket) => ticket.status !== 'closed').length,
+    [tickets],
+  )
+  const highPriorityCount = useMemo(
+    () => tickets.filter((ticket) => ticket.priority === 'high').length,
+    [tickets],
+  )
+
+  const metrics = [
+    {
+      label: 'Ticket aperti',
+      value: String(openCount),
+      detail: 'Stato diverso da chiuso',
+      tone: 'blue',
+      icon: ClipboardList,
+    },
+    {
+      label: 'Alta priorità',
+      value: String(highPriorityCount),
+      detail: 'Priorità alta',
+      tone: 'red',
+      icon: Flag,
+    },
+    {
+      label: 'SLA a rischio',
+      value: UNAVAILABLE,
+      detail: 'Non disponibile in questa build',
+      tone: 'orange',
+      icon: Clock3,
+    },
+    {
+      label: 'Automazioni oggi',
+      value: UNAVAILABLE,
+      detail: 'Non disponibile in questa build',
+      tone: 'green',
+      icon: Bot,
+    },
+  ] as const
+
   return (
     <section className="metric-strip" aria-label="Metriche operative">
-      {metrics.map(({ label, value, trend, detail, tone, icon: Icon }) => (
+      {metrics.map(({ label, value, detail, tone, icon: Icon }) => (
         <article className={`metric metric--${tone}`} key={label}>
           <div>
             <h2>{label}</h2>
             <strong>{value}</strong>
-            <p>
-              <span aria-hidden="true">{trend}</span> {detail}
-            </p>
+            <p>{detail}</p>
           </div>
           <span className="metric__icon" aria-hidden="true">
             <Icon size={24} strokeWidth={1.8} />

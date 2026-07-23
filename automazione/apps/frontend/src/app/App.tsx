@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { useDeferredValue, useMemo, useState } from 'react'
 import { filterTickets } from '../domain/ticketFilter'
 import type { Ticket, TicketFilters } from '../domain/types'
 import type { RuntimeConfig } from '../infrastructure/runtimeConfig'
@@ -70,11 +70,10 @@ export function App({ gateway, runtimeConfig }: AppProps) {
     () => tickets.find((ticket) => ticket.id === selectedTicketId) ?? null,
     [selectedTicketId, tickets],
   )
-
-  useEffect(() => {
-    if (state.phase !== 'ready' || selectedTicketId !== null || state.tickets.length === 0) return
-    setSelectedTicketId(state.tickets[0]?.id ?? null)
-  }, [selectedTicketId, state])
+  const highPriorityCount = useMemo(
+    () => tickets.filter((ticket) => ticket.priority === 'high').length,
+    [tickets],
+  )
 
   if (state.phase === 'loading') return <LoadingState />
   if (state.phase === 'error') return <ErrorState message={state.message} onRetry={() => void reload()} />
@@ -106,6 +105,7 @@ export function App({ gateway, runtimeConfig }: AppProps) {
           searchEnabled={activeSection === 'tickets'}
           site={state.session.site}
           user={state.session.user}
+          highPriorityCount={highPriorityCount}
           onQueryChange={(query) => setFilters({ ...filters, query })}
           onOpenMobileNav={() => setMobileNavOpen(true)}
           onLogout={async () => {
@@ -117,7 +117,7 @@ export function App({ gateway, runtimeConfig }: AppProps) {
         {activeSection === 'tickets' ? (
           <div className="dashboard-layout">
             <main className="ticket-workspace">
-              <MetricStrip />
+              <MetricStrip tickets={tickets} />
               <div className="ticket-command-surface">
                 <TicketFilterBar
                   filters={filters}

@@ -88,7 +88,11 @@ describe('Helios Desk dashboard', () => {
 
     expect(await screen.findByRole('heading', { name: 'Ticket operativi' })).toBeVisible()
     expect(screen.getByRole('navigation', { name: 'Navigazione principale' })).toBeVisible()
-    expect(screen.getByText('128')).toBeVisible()
+    // Metriche derivate dai ticket reali (2 non chiusi, 1 ad alta priorità),
+    // non più valori hardcoded.
+    const metrics = within(screen.getByRole('region', { name: 'Metriche operative' }))
+    expect(metrics.getByText('2')).toBeVisible()
+    expect(metrics.getByText('1')).toBeVisible()
     expect(screen.getByText('AWS Primary')).toBeVisible()
     expect(screen.getByRole('row', { name: /TKT-2025-0578/ })).toBeVisible()
   })

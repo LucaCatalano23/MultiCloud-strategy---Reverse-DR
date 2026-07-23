@@ -72,6 +72,27 @@ describe('BFF client', () => {
     expect(headers.has('Authorization')).toBe(false)
   })
 
+  it('surfaces the BFF error envelope message instead of only the status code', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ error: { code: 'upstream_forbidden', message: 'Permesso mancante' } }),
+        { status: 403, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+
+    await expect(createBffClient(config, fetcher).listTickets()).rejects.toThrow(
+      'Permesso mancante (403)',
+    )
+  })
+
+  it('falls back to the status code when the error body is not a valid envelope', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response('gateway down', { status: 502 }))
+
+    await expect(createBffClient(config, fetcher).listTickets()).rejects.toThrow(
+      'Richiesta BFF non riuscita (502)',
+    )
+  })
+
   it('builds a relative login URL with a constrained return target', () => {
     const client = createBffClient(config, vi.fn())
 

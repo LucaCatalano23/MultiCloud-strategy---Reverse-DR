@@ -4,19 +4,19 @@ import { formatUpdatedAt } from '../../domain/presentation'
 import type { Ticket } from '../../domain/types'
 import { PriorityBadge, StatusBadge } from './Badges'
 
-type DetailTab = 'details' | 'activity' | 'attachments' | 'relations' | 'audit'
+type DetailTab = 'details' | 'activity'
 
 interface TicketDrawerProps {
   readonly ticket: Ticket
   readonly onClose: () => void
 }
 
+// Solo le sezioni con una fonte dati reale nel contratto Ticket. Allegati,
+// relazioni e audit trail non sono modellati dal BFF: mostrare tab con contenuto
+// fabbricato violerebbe l'onestà tecnica del progetto, quindi non esistono.
 const tabs = [
   { id: 'details' as const, label: 'Dettagli' },
   { id: 'activity' as const, label: 'Attività' },
-  { id: 'attachments' as const, label: 'Allegati (2)' },
-  { id: 'relations' as const, label: 'Relazioni (1)' },
-  { id: 'audit' as const, label: 'Audit trail' },
 ]
 
 export function TicketDrawer({ ticket, onClose }: TicketDrawerProps) {
@@ -38,7 +38,9 @@ export function TicketDrawer({ ticket, onClose }: TicketDrawerProps) {
           <button
             type="button"
             aria-label="Azioni ticket"
-            onClick={() => setActionNotice('Azioni avanzate disponibili dal menu contestuale.')}
+            onClick={() =>
+              setActionNotice('Azioni ticket non disponibili in questa build: capability non esposta dal BFF.')
+            }
           >
             <MoreVertical size={18} aria-hidden="true" />
           </button>
@@ -77,25 +79,7 @@ export function TicketDrawer({ ticket, onClose }: TicketDrawerProps) {
         aria-labelledby={`ticket-tab-${activeTab}`}
       >
         {activeTab === 'details' ? <DetailContent ticket={ticket} onNotice={setActionNotice} /> : null}
-        {activeTab === 'activity' ? (
-          <TimelineContent ticket={ticket} />
-        ) : null}
-        {activeTab === 'attachments' ? (
-          <SimpleList
-            items={['log-failover-0578.txt · 24 KB', 'screenshot-monitoraggio.png · 182 KB']}
-          />
-        ) : null}
-        {activeTab === 'relations' ? (
-          <SimpleList items={['TKT-2025-0577 · Replica RDS lag superiore a soglia']} />
-        ) : null}
-        {activeTab === 'audit' ? (
-          <SimpleList
-            items={[
-              '09:42 · Luca Conti ha cambiato lo stato in In corso',
-              '08:27 · Marco Rossi ha creato il ticket',
-            ]}
-          />
-        ) : null}
+        {activeTab === 'activity' ? <TimelineContent ticket={ticket} /> : null}
       </div>
     </aside>
   )
@@ -126,9 +110,9 @@ function DetailContent({
           </dd>
         </div>
         <div>
-          <dt>SLA</dt>
+          <dt>Stato</dt>
           <dd>
-            Entro 2h <span className="sla-deadline">Scadenza: Oggi, 11:42</span>
+            <StatusBadge status={ticket.status} />
           </dd>
         </div>
       </dl>
@@ -139,16 +123,12 @@ function DetailContent({
           <dd>{ticket.description}</dd>
         </div>
         <div>
-          <dt>Impatto</dt>
-          <dd>Utenti e-commerce impossibilitati a concludere ordini.</dd>
-        </div>
-        <div>
           <dt>Creato</dt>
-          <dd>{formatUpdatedAt(ticket.createdAt)} da Marco Rossi</dd>
+          <dd>{formatUpdatedAt(ticket.createdAt)}</dd>
         </div>
         <div>
           <dt>Ultimo aggiornamento</dt>
-          <dd>{formatUpdatedAt(ticket.updatedAt)} da {ticket.assignee ?? 'Non assegnato'}</dd>
+          <dd>{formatUpdatedAt(ticket.updatedAt)}</dd>
         </div>
       </dl>
 
@@ -158,24 +138,13 @@ function DetailContent({
           <strong>{ticket.assignee ?? 'Non assegnato'}</strong>
           <button
             type="button"
-            onClick={() => onNotice('Richiesta di riassegnazione pronta per la conferma.')}
+            onClick={() =>
+              onNotice('Riassegnazione non disponibile: capability non esposta dal BFF.')
+            }
           >
             <UserRoundPlus size={14} aria-hidden="true" />
             Riassegna
           </button>
-        </div>
-        <div>
-          <span>Team</span>
-          <strong>DR Operations</strong>
-        </div>
-        <div>
-          <span>Watcher (3)</span>
-          <span className="watchers" aria-label="Sara Bianchi, Marco Rossi, Giulia Verdi">
-            <i>SB</i>
-            <i>MR</i>
-            <i>GV</i>
-            <i>+</i>
-          </span>
         </div>
       </section>
     </div>
@@ -188,27 +157,18 @@ function TimelineContent({ ticket }: { readonly ticket: Ticket }) {
       <li>
         <Check size={15} aria-hidden="true" />
         <span>
-          <strong>Stato aggiornato</strong>
-          {formatUpdatedAt(ticket.updatedAt)} · {ticket.assignee ?? 'Non assegnato'}
+          <strong>Ultimo aggiornamento</strong>
+          {formatUpdatedAt(ticket.updatedAt)}
+          {ticket.assignee ? ` · ${ticket.assignee}` : ''}
         </span>
       </li>
       <li>
         <Check size={15} aria-hidden="true" />
         <span>
           <strong>Ticket creato</strong>
-          {formatUpdatedAt(ticket.createdAt)} · Marco Rossi
+          {formatUpdatedAt(ticket.createdAt)}
         </span>
       </li>
     </ol>
-  )
-}
-
-function SimpleList({ items }: { readonly items: readonly string[] }) {
-  return (
-    <ul className="drawer-simple-list">
-      {items.map((item) => (
-        <li key={item}>{item}</li>
-      ))}
-    </ul>
   )
 }

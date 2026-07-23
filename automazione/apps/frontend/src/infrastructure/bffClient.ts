@@ -142,6 +142,25 @@ function parsePlatformStatus(value: unknown): PlatformStatus {
   }
 }
 
+async function bffErrorMessage(response: Response): Promise<string> {
+  // Il BFF restituisce sempre un envelope {"error":{"code","message"}} con lo
+  // status reale (401/403/422/502...). Fino a ieri lo scartavamo mostrando solo
+  // il codice numerico: ora sfruttiamo il messaggio mappato lato server (che è
+  // già sanitizzato, senza leak del body upstream). Fallback al solo status se
+  // il body è assente o non è JSON, per non introdurre un nuovo fallimento.
+  const fallback = `Richiesta BFF non riuscita (${response.status})`
+  try {
+    const body: unknown = await response.json()
+    if (isRecord(body) && isRecord(body.error) && typeof body.error.message === 'string') {
+      const message = body.error.message.trim()
+      if (message.length > 0) return `${message} (${response.status})`
+    }
+  } catch {
+    // corpo assente o non-JSON: usa il fallback col solo status
+  }
+  return fallback
+}
+
 function readCookie(name: string): string | null {
   const prefix = `${name}=`
   const match = document.cookie
@@ -180,7 +199,7 @@ export function createBffClient(
       headers,
     })
     if (!response.ok) {
-      throw new Error(`Richiesta BFF non riuscita (${response.status})`)
+      throw new Error(await bffErrorMessage(response))
     }
     if (response.status === 204) return parser(null)
     return parser(await response.json())
