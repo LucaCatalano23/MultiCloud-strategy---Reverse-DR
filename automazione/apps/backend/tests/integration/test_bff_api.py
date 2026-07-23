@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from helios_bff.application.auth_service import CompletedLogin, LoginStart
+from helios_bff.infrastructure.service_clients import UpstreamServiceError, UpstreamStatusError
 from helios_bff.presentation.api import BffSite, create_app
 from tests.fakes import principal
 
@@ -52,6 +53,20 @@ class StubTicketClient:
     async def create_ticket(self, access_token: str, payload: dict[str, Any]) -> dict[str, Any]:
         self.tokens.append(access_token)
         return {"data": {"id": "ticket-1", **payload}}
+
+    async def ping(self) -> bool:
+        return True
+
+
+class FailingTicketClient:
+    def __init__(self, error: Exception) -> None:
+        self._error = error
+
+    async def list_tickets(self, access_token: str) -> dict[str, Any]:
+        raise self._error
+
+    async def create_ticket(self, access_token: str, payload: dict[str, Any]) -> dict[str, Any]:
+        raise self._error
 
     async def ping(self) -> bool:
         return True
@@ -155,3 +170,66 @@ def test_bff_logout_forwards_double_submit_values_and_clears_cookies() -> None:
     assert response.status_code == 204
     assert auth.logout_args == ("opaque-session", "csrf-token", "csrf-token")
     assert "__Host-helios_session=\"\"" in response.headers["set-cookie"]
+
+
+VALID_TICKET_PAYLOAD = {
+    "title": "Ordine bloccato",
+    "description": "Il checkout restituisce errore",
+    "priority": "medium",
+    "service": "Ordini e-Commerce",
+    "environment": "On-prem DR",
+}
+
+
+@pytest.mark.integration
+def test_bff_surfaces_upstream_client_status_instead_of_opaque_502() -> None:
+    app = create_app(
+        auth=StubBrowserAuth(authenticated=True),
+        tickets=FailingTicketClient(UpstreamStatusError(403, "denied")),
+        platform=StubPlatformProbe(),
+        site=SITE,
+    )
+
+    with TestClient(app, base_url="https://desk.example.test") as client:
+        client.cookies.set("__Host-helios_session", "opaque-session")
+        response = client.post("/api/v1/tickets", json=VALID_TICKET_PAYLOAD)
+
+    assert response.status_code == 403
+    body = response.json()
+    assert body["error"]["code"] == "upstream_forbidden"
+    # Nessun leak del body upstream: solo il messaggio safe mappato.
+    assert "denied" not in str(body).lower()
+
+
+@pytest.mark.integration
+def test_bff_keeps_502_for_transport_failure() -> None:
+    app = create_app(
+        auth=StubBrowserAuth(authenticated=True),
+        tickets=FailingTicketClient(UpstreamServiceError("ticket service request failed")),
+        platform=StubPlatformProbe(),
+        site=SITE,
+    )
+
+    with TestClient(app, base_url="https://desk.example.test") as client:
+        client.cookies.set("__Host-helios_session", "opaque-session")
+        response = client.post("/api/v1/tickets", json=VALID_TICKET_PAYLOAD)
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "upstream_unavailable"
+
+
+@pytest.mark.integration
+def test_bff_maps_unlisted_upstream_status_to_502() -> None:
+    app = create_app(
+        auth=StubBrowserAuth(authenticated=True),
+        tickets=FailingTicketClient(UpstreamStatusError(500, "boom")),
+        platform=StubPlatformProbe(),
+        site=SITE,
+    )
+
+    with TestClient(app, base_url="https://desk.example.test") as client:
+        client.cookies.set("__Host-helios_session", "opaque-session")
+        response = client.post("/api/v1/tickets", json=VALID_TICKET_PAYLOAD)
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "upstream_unavailable"

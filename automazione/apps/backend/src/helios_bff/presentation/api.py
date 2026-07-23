@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from typing import Any, Callable, Literal, Protocol
@@ -15,14 +16,29 @@ from helios_bff.application.auth_service import (
     SessionError,
 )
 from helios_bff.application.ports import PlatformProbe, TicketClient
-from helios_bff.infrastructure.service_clients import UpstreamServiceError
+from helios_bff.infrastructure.service_clients import UpstreamServiceError, UpstreamStatusError
 from helios_shared.http import ApiProblem, install_error_handlers
 from helios_ticket_service.domain.models import TicketPriority
 
 
+logger = logging.getLogger(__name__)
+
 SESSION_COOKIE = "__Host-helios_session"
 CSRF_COOKIE = "__Host-helios_csrf"
 STATE_COOKIE = "__Host-helios_oauth_state"
+
+# Mappa gli errori di status del servizio a valle su una risposta veritiera per
+# il browser, senza inoltrare il body upstream. Gli status non elencati (5xx,
+# imprevisti) restano un 502 "upstream_unavailable": lì il difetto è davvero del
+# servizio dipendente, non della richiesta dell'utente.
+_UPSTREAM_STATUS_MAP: dict[int, tuple[str, str]] = {
+    401: ("upstream_unauthenticated", "The dependent service rejected the session token"),
+    403: ("upstream_forbidden", "The account lacks permission for this operation"),
+    404: ("upstream_not_found", "The requested resource was not found"),
+    409: ("upstream_conflict", "The request conflicts with the current resource state"),
+    422: ("upstream_validation_failed", "The dependent service rejected the request payload"),
+    429: ("upstream_rate_limited", "The dependent service is rate limiting requests"),
+}
 
 
 class BrowserAuth(Protocol):
@@ -81,7 +97,8 @@ def create_app(
     install_error_handlers(app)
 
     @app.exception_handler(OAuthFlowError)
-    async def oauth_error(_: Request, __: OAuthFlowError):
+    async def oauth_error(_: Request, exc: OAuthFlowError):
+        logger.warning("OAuth flow failed: %s", exc, exc_info=exc.__cause__ or exc)
         return _problem(400, "oauth_flow_failed", "Authentication could not be completed")
 
     @app.exception_handler(CsrfError)
@@ -92,8 +109,23 @@ def create_app(
     async def session_error(_: Request, __: SessionError):
         return _problem(401, "unauthenticated", "Authentication required")
 
+    @app.exception_handler(UpstreamStatusError)
+    async def upstream_status_error(_: Request, exc: UpstreamStatusError):
+        logger.warning(
+            "Upstream returned HTTP %s: %s",
+            exc.status_code,
+            exc,
+            exc_info=exc.__cause__ or exc,
+        )
+        mapped = _UPSTREAM_STATUS_MAP.get(exc.status_code)
+        if mapped is None:
+            return _problem(502, "upstream_unavailable", "A dependent service is unavailable")
+        code, message = mapped
+        return _problem(exc.status_code, code, message)
+
     @app.exception_handler(UpstreamServiceError)
-    async def upstream_error(_: Request, __: UpstreamServiceError):
+    async def upstream_error(_: Request, exc: UpstreamServiceError):
+        logger.warning("Upstream service call failed: %s", exc, exc_info=exc.__cause__ or exc)
         return _problem(502, "upstream_unavailable", "A dependent service is unavailable")
 
     @app.get("/health/live")

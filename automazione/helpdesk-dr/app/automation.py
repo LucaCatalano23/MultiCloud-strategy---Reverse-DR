@@ -88,7 +88,7 @@ class AwsLambdaGateway:
             raise AutomationInvocationError("AWS Lambda returned a non-object payload")
         return AutomationResult(
             provider="aws-lambda",
-            runtime=str(payload.get("runtime", "localstack-cloud")),
+            runtime=str(payload.get("runtime", "aws-lambda-cloud")),
             payload=payload,
         )
 

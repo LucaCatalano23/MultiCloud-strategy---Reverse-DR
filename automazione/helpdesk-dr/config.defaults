@@ -23,17 +23,10 @@ POSTGRES_DB="helpdesk"
 POSTGRES_USER="helpdesk"
 
 BACKUP_DIR="/srv/helpdesk-backups"
-BACKUP_RETENTION="144"
-BACKUP_INTERVAL_MINUTES="10"
-BACKUP_S3_BUCKET="reverse-dr-helpdesk-backups"
 BACKUP_S3_PREFIX="postgres"
 BACKUP_MIRROR_DIR="/srv/helpdesk-dr-mirror"
-BACKUP_MIRROR_INTERVAL_MINUTES="10"
 
 AWS_REGION="eu-west-1"
-AWS_CLI_VERSION="latest"
-EKS_CLUSTER_NAME="helpdesk-cloud"
-LOCALSTACK_EKS_API_ENABLED="false"
 HELPDESK_LAMBDA_FUNCTION_NAME="helpdesk-ticket-processor"
 
 DR_CONTROLLER_INTERVAL_SECONDS="20"

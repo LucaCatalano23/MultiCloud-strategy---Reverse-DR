@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
@@ -25,6 +26,7 @@ class ApiProblem(Exception):
 
 
 _bearer = HTTPBearer(auto_error=False)
+_logger = logging.getLogger(__name__)
 
 
 def require_permissions(
@@ -40,8 +42,10 @@ def require_permissions(
             principal.require(*permissions)
             return principal
         except AuthenticationError as exc:
+            _logger.warning("Bearer token rejected: %s", exc, exc_info=exc.__cause__ or exc)
             raise ApiProblem(401, "unauthenticated", "Authentication required") from exc
         except AuthorizationError as exc:
+            _logger.warning("Permission check failed: %s", exc)
             raise ApiProblem(403, "forbidden", "Insufficient permissions") from exc
 
     return dependency

@@ -167,7 +167,6 @@ che permette di eseguire i runbook direttamente dal nodo operativo, ad esempio:
 
 ```bash
 lxc exec ansible-node -- helpdesk-dr poc/healthcheck
-lxc exec ansible-node -- helpdesk-dr backup/backup-cloud
 lxc exec ansible-node -- helpdesk-dr failover/run-ansible-failover
 ```
 
@@ -320,10 +319,10 @@ Il flusso principale in DR mode e:
 client interno -> DNS aziendale -> helpdesk.azienda.lan -> k3s-datacenter -> helpdesk-api -> postgres on-prem
 ```
 
-Il flusso operativo di backup e restore e:
+Il flusso operativo di backup e restore e (il tratto cloud-k3s -> mirror ansible-node era automatizzato via LocalStack S3 ed e' oggi manuale, vedi [`RUNBOOK_SCENARIO_REALE.md`](RUNBOOK_SCENARIO_REALE.md)):
 
 ```text
-cloud-k3s/postgres -> backup compresso + SHA-256 -> S3 LocalStack -> mirror ansible-node -> restore su k3s-datacenter/postgres
+cloud-k3s/postgres -> backup compresso + SHA-256 -> mirror ansible-node (popolamento manuale) -> restore su k3s-datacenter/postgres
 ```
 
 Il flusso di controllo DR e:

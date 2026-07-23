@@ -1,6 +1,8 @@
 # Helpdesk Reverse DR Lab
 
-> La procedura aggiornata con LocalStack EKS/S3/Lambda, backup ogni 10 minuti, mirror off-site e orchestrazione Ansible è in [`../RUNBOOK_SCENARIO_REALE.md`](../RUNBOOK_SCENARIO_REALE.md). Le sezioni storiche sotto descrivono la prima versione della PoC e non rappresentano più l'ordine completo di provisioning.
+> La procedura aggiornata con orchestrazione Ansible è in [`../RUNBOOK_SCENARIO_REALE.md`](../RUNBOOK_SCENARIO_REALE.md). Le sezioni storiche sotto descrivono la prima versione della PoC e non rappresentano più l'ordine completo di provisioning.
+>
+> **Cloud-primary-via-LocalStack dismesso.** La simulazione AWS (EKS/S3/Lambda) tramite LocalStack e' stata rimossa: il progetto non simula piu' l'infrastruttura AWS via LocalStack, che resta coperta solo dalla generazione corrente con AWS reale (`automazione/infra/aws`). Di conseguenza il backup automatico del primary cloud verso S3 e il mirror on-prem non sono piu' popolati automaticamente: `scripts/restore/restore-onprem.sh` continua a funzionare, ma serve un backup gia' presente in `BACKUP_MIRROR_DIR` sull'`ansible-node`.
 
 Questo modulo simula un disaster recovery inverso cloud -> on-premise.
 
@@ -75,10 +77,11 @@ Per warm standby lascia `ONPREM_STANDBY_REPLICAS=1` in `config.env`: il pod on-p
 3. `scripts/poc/publish-git-truth.sh`: inizializza il repository applicativo su `git-server`.
 4. `scripts/deploy/deploy-cloud-primary.sh`: deploy helpdesk primary su cloud.
 5. `scripts/deploy/deploy-onprem-standby.sh`: deploy standby on-prem.
-6. `scripts/backup/backup-cloud.sh`: esegue backup dati dal cloud e upload su S3 LocalStack.
-7. `scripts/failover/run-ansible-failover.sh`: playbook Ansible per restore, preflight Lambda, promozione e DNS cutover.
-8. `scripts/failover/dr-controller.sh`: controller automatico che osserva il primario e lancia il failover.
-9. `scripts/poc/healthcheck.sh`: verifica stato cloud, on-prem e DNS.
+6. `scripts/failover/run-ansible-failover.sh`: playbook Ansible per restore, preflight Lambda, promozione e DNS cutover.
+7. `scripts/failover/dr-controller.sh`: controller automatico che osserva il primario e lancia il failover.
+8. `scripts/poc/healthcheck.sh`: verifica stato cloud, on-prem e DNS.
+
+Il backup periodico del primary cloud verso S3 (via LocalStack) e il relativo mirror on-prem sono stati rimossi insieme a LocalStack; vedi la nota a inizio file.
 
 ## Esecuzione da WSL
 
@@ -89,8 +92,6 @@ bash scripts/poc/setup-onprem-k3s.sh
 bash scripts/poc/publish-git-truth.sh
 bash scripts/deploy/deploy-cloud-primary.sh
 bash scripts/deploy/deploy-onprem-standby.sh
-bash scripts/backup/backup-cloud.sh
-bash scripts/backup/install-cloud-backup-timer.sh
 ```
 
 ## Esecuzione da ansible-node
@@ -105,7 +106,6 @@ Dopo il bootstrap, i runbook possono partire da `ansible-node`:
 
 ```bash
 lxc exec ansible-node -- helpdesk-dr poc/healthcheck
-lxc exec ansible-node -- helpdesk-dr backup/backup-cloud
 lxc exec ansible-node -- helpdesk-dr failover/run-ansible-failover
 ```
 
@@ -113,7 +113,6 @@ Oppure, dalla WSL, usando il comando remoto su `ansible-node`:
 
 ```bash
 bash scripts/poc/ansible-run.sh poc/healthcheck
-bash scripts/poc/ansible-run.sh backup/backup-cloud
 bash scripts/poc/ansible-run.sh failover/run-ansible-failover
 ```
 
@@ -154,7 +153,7 @@ Scelta architetturale:
 
 ## RPO/RTO
 
-- RPO cloud: backup ogni 10 minuti; la copia on-prem e sfalsata di 5 minuti e porta l'RPO teorico off-site a circa 15 minuti.
+- RPO cloud: dipende da quando e' stato prodotto l'ultimo backup presente in `BACKUP_MIRROR_DIR` su `ansible-node` (il timer automatico di backup/mirror e' stato rimosso insieme a LocalStack, vedi nota a inizio file).
 - RTO: tempo di restore on-prem + rollout app + aggiornamento DNS.
 
-La simulazione usa API AWS compatibili tramite LocalStack. In AWS reale, EKS, S3, IAM e Lambda sostituiscono gli emulatori mantenendo gli stessi confini applicativi e i manifest Kubernetes.
+La generazione corrente (`automazione/apps`, `automazione/infra`) copre EKS, S3, IAM e Lambda su AWS reale; questa PoC legacy non simula piu' quelle API via LocalStack.

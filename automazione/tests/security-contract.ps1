@@ -5,12 +5,6 @@ $violations = [System.Collections.Generic.List[string]]::new()
 
 $trackedFiles = @(git -C $repositoryRoot ls-files)
 $deletedTrackedFiles = @(git -C $repositoryRoot ls-files --deleted)
-if (
-    $trackedFiles -contains 'automazione/token-localstack' -and
-    $deletedTrackedFiles -notcontains 'automazione/token-localstack'
-) {
-    $violations.Add('automazione/token-localstack must not be tracked')
-}
 
 if (
     $trackedFiles -contains 'automazione/helpdesk-dr/config.env' -and

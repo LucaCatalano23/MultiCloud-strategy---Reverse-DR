@@ -22,7 +22,6 @@ fi
 
 exec_ansible apt-get update
 exec_ansible env DEBIAN_FRONTEND=noninteractive apt-get install -y ansible-core git ca-certificates curl gzip snapd unzip
-install_aws_cli_v2 exec_ansible
 
 lxd_snap_state="$(exec_ansible sh -lc 'if snap list lxd >/dev/null 2>&1; then printf ready; fi')"
 if [ "${lxd_snap_state}" != "ready" ]; then
@@ -53,12 +52,10 @@ if [ "${socket_state}" != "ready" ]; then
 fi
 exec_ansible lxc list --format compact >/dev/null
 
-localstack_url="$(discover_localstack_endpoint exec_ansible)"
 exec_ansible install -d -m 0750 /etc/helpdesk-dr
 lxc_retry file push "${HELPDESK_DR_CONFIG_PATH}" \
   "${ANSIBLE_NODE_NAME}/etc/helpdesk-dr/config.env" \
   --mode=0600 --uid=0 --gid=0
-exec_ansible bash -lc "printf '%s\\n' '${localstack_url}' >/etc/helpdesk-dr/localstack.endpoint && chmod 0600 /etc/helpdesk-dr/localstack.endpoint"
 
 exec_ansible bash -lc "rm -rf ${CONTROL_DIR} && git clone ${APP_REPOSITORY_URL} ${CONTROL_DIR}"
 exec_ansible bash -lc "
@@ -78,7 +75,6 @@ exec_ansible chmod 0755 "${CONTROL_DIR}/scripts/poc/helpdesk-dr.sh"
 exec_ansible ln -sfn "${CONTROL_DIR}/scripts/poc/helpdesk-dr.sh" /usr/local/bin/helpdesk-dr
 
 exec_ansible bash -lc "cd ${CONTROL_DIR} && git rev-parse --short HEAD && lxc list --format compact >/dev/null"
-exec_ansible helpdesk-dr backup/install-ansible-backup-mirror-timer
 
 echo "Ansible control node ready."
 echo "Run scripts from ansible-node, for example:"

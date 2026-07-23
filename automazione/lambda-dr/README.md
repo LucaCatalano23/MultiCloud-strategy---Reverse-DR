@@ -1,6 +1,6 @@
 # Lambda DR On-Premises Runtime
 
-La funzione `helpdesk-ticket-processor` è ora parte del data plane on-prem. Durante il funzionamento normale l'Helpdesk invoca AWS Lambda su LocalStack; dopo la promozione DR lo stesso use case viene inoltrato a `event-adapter` e al runtime RIE Kubernetes. Il runbook completo è in [`../RUNBOOK_SCENARIO_REALE.md`](../RUNBOOK_SCENARIO_REALE.md).
+La funzione `helpdesk-ticket-processor` è ora parte del data plane on-prem. Durante il funzionamento normale l'Helpdesk invoca AWS Lambda sul primary cloud; dopo la promozione DR lo stesso use case viene inoltrato a `event-adapter` e al runtime RIE Kubernetes. La simulazione AWS via LocalStack per il primary cloud è stata rimossa, vedi i limiti dichiarati in [`../RUNBOOK_SCENARIO_REALE.md`](../RUNBOOK_SCENARIO_REALE.md).
 
 This module demonstrates an AWS Lambda compatible execution path for Disaster Recovery on proprietary infrastructure.
 

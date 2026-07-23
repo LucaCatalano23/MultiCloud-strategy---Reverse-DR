@@ -5,7 +5,12 @@ metadata:
   namespace: helios-desk
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    traefik.ingress.kubernetes.io/router.priority: "100"
+    # No explicit router.priority: Traefik auto-computes priority per rule from
+    # match specificity, so /api, /health and /dr-status naturally outrank the
+    # catch-all "/" rule within this same Ingress. Forcing a single priority
+    # value applies it uniformly to every rule in the object, which collapses
+    # that specificity ordering and made "/" win non-deterministically for
+    # more specific paths too.
 spec:
   ingressClassName: traefik
   tls:

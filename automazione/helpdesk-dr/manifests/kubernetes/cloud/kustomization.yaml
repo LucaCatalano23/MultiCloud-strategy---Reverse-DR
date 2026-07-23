@@ -15,4 +15,3 @@ configMapGenerator:
     namespace: helpdesk
     literals:
       - AUTOMATION_MODE=aws-lambda
-      - AWS_ENDPOINT_URL=http://localstack.helpdesk.svc.cluster.local:4566

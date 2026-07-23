@@ -6,19 +6,16 @@ La PoC separa i failure domain e mantiene lo stesso contratto applicativo nei du
 
 ```mermaid
 flowchart LR
-  subgraph cloud["Cloud AWS simulato"]
-    ls["LocalStack\nS3 + Lambda + IAM/EC2"]
+  subgraph cloud["Cloud AWS simulato (data plane k3s)"]
     eks["cloud-k3s\ndata plane Kubernetes EKS-like"]
     pgc["PostgreSQL primary"]
     appc["Helpdesk primary\nAutomation: AWS Lambda"]
-    ls --- eks
     eks --> appc --> pgc
-    pgc -->|"dump ogni 10 min"| s3["S3 versionato"]
   end
 
   subgraph onprem["On-prem Kubernetes"]
     ans["ansible-node\nDR coordinator"]
-    mirror["Backup mirror\noff-failure-domain"]
+    mirror["Backup mirror\noff-failure-domain\npopolamento manuale"]
     k3s["k3s-datacenter"]
     appdr["Helpdesk standby"]
     lambdadr["lambda-dr + RIE"]
@@ -29,60 +26,18 @@ flowchart LR
     appdr --> lambdadr
   end
 
-  s3 -->|"sync ogni 10 min"| mirror
   ans -->|"restore, preflight, promote, DNS"| appdr
 ```
 
-L'API EKS di LocalStack è disponibile soltanto con il piano Ultimate. La modalità predefinita del progetto (`LOCALSTACK_EKS_API_ENABLED=false`) usa quindi `cloud-k3s` come data plane Kubernetes EKS-like e affida a LocalStack S3, Lambda, IAM, EC2 e STS. Questo mantiene portabili manifest, workload, backup e failover senza dipendere da una licenza Ultimate, ma non simula le chiamate del control plane AWS `eks:*`. Con una licenza compatibile è possibile abilitare anche tali API impostando `LOCALSTACK_EKS_API_ENABLED=true`.
+**Cloud-primary-via-LocalStack dismesso.** Questa PoC simulava in precedenza le API AWS (EKS/S3/IAM/Lambda) del sito cloud tramite LocalStack. La simulazione e' stata rimossa: il progetto non simula piu' l'infrastruttura AWS via LocalStack. La copertura AWS reale (EKS, S3, IAM, Lambda) resta quella della generazione corrente (`automazione/infra/aws`). Di conseguenza:
 
-Per evitare problemi di routing tra Docker Desktop e le reti LXD, eseguire Docker Engine nella stessa distribuzione Ubuntu WSL che ospita LXD.
+- `cloud-k3s` resta il data plane Kubernetes EKS-like, ma non c'e' piu' un control plane AWS simulato dietro di esso;
+- il modo `AUTOMATION_MODE=aws-lambda` del primary richiede `AWS_ENDPOINT_URL` (vedi `automazione/helpdesk-dr/app/automation.py`): senza LocalStack questa variabile non viene piu' impostata dal manifest cloud, quindi l'automazione lato primary fallisce esplicitamente finche' non viene ricollegata a un endpoint Lambda reale o a un altro emulatore;
+- il backup periodico cloud -> S3 e il relativo mirror on-prem, prima automatizzati via LocalStack S3, sono stati rimossi: il restore on-prem (`scripts/restore/restore-onprem.sh`, invariato) richiede un backup gia' presente in `BACKUP_MIRROR_DIR` su `ansible-node`, da produrre e copiare manualmente.
 
 ## Ordine di provisioning
 
 Tutti i comandi seguenti vanno eseguiti da Ubuntu WSL nella root del repository.
-
-### 0. Docker Engine nativo nella distribuzione WSL
-
-Non abilitare l'integrazione Docker Desktop per la distribuzione Ubuntu usata dal lab e non eseguire contemporaneamente Docker Desktop e Docker Engine nativo. LocalStack deve condividere la rete della distribuzione che ospita LXD, altrimenti il control plane EKS non può raggiungere `cloud-k3s`.
-
-Installa Docker Engine e Compose v2 dal repository ufficiale Docker:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y ca-certificates curl
-sudo install -m 0755 -d /etc/apt/keyrings
-sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-  -o /etc/apt/keyrings/docker.asc
-sudo chmod a+r /etc/apt/keyrings/docker.asc
-
-sudo tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
-Types: deb
-URIs: https://download.docker.com/linux/ubuntu
-Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
-Components: stable
-Architectures: $(dpkg --print-architecture)
-Signed-By: /etc/apt/keyrings/docker.asc
-EOF
-
-sudo apt-get update
-sudo apt-get install -y \
-  docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-sudo systemctl enable --now docker
-sudo usermod -aG docker "$USER"
-newgrp docker
-```
-
-Il gruppo `docker` equivale operativamente a privilegi root sulla macchina. È una scelta accettabile per il nodo di laboratorio dedicato, non per un host multiutente non fidato.
-
-Verifica il runtime prima di proseguire:
-
-```bash
-systemctl is-active docker
-docker info --format '{{.OperatingSystem}}'
-docker compose version
-```
-
-Il primo comando deve restituire `active`; il secondo deve identificare Ubuntu e non `Docker Desktop`.
 
 ### 1. Rete on-prem
 
@@ -104,38 +59,9 @@ bash scripts/poc/setup-onprem-k3s.sh
 cd ../..
 ```
 
-Il setup cloud esporta anche il kubeconfig X509 in `automazione/localstack/.state/cloud-kubeconfig`, usato da LocalStack per registrare l'API EKS.
+Il cluster `cloud-k3s` rappresenta il data plane Kubernetes cloud: i nodi ricevono label di regione, availability zone, instance type e `reverse-dr.io/eks-simulator=true`.
 
-### 3. Control plane AWS simulato
-
-```bash
-read -rsp 'LocalStack Auth Token: ' LOCALSTACK_AUTH_TOKEN
-printf '\n'
-export LOCALSTACK_AUTH_TOKEN
-cd automazione/localstack
-bash scripts/start.sh
-cd ../..
-```
-
-Il token reale inizia con `ls-` e deve appartenere a una licenza attiva assegnata all'utente. L'acquisizione nascosta tramite `read -s` evita di scrivere il segreto nella history della shell; il token rimane soltanto nell'ambiente della sessione e non deve essere salvato nel repository.
-
-L'init idempotente crea:
-
-- VPC `10.20.0.0/16` e due subnet/AZ;
-- bucket S3 versionato `reverse-dr-helpdesk-backups`;
-- Lambda cloud `helpdesk-ticket-processor`;
-- ruolo IAM dedicato alla Lambda.
-
-Il cluster `cloud-k3s` rappresenta il data plane Kubernetes cloud: i nodi ricevono label di regione, availability zone, instance type e `reverse-dr.io/eks-simulator=true`. Se la licenza LocalStack include EKS, avviare invece con:
-
-```bash
-export LOCALSTACK_EKS_API_ENABLED=true
-bash scripts/start.sh
-```
-
-In tale modalità l'init crea anche il cluster EKS logico `helpdesk-cloud` e il relativo ruolo IAM.
-
-### 4. Workload cloud e runtime on-prem
+### 3. Workload cloud e runtime on-prem
 
 ```bash
 cd automazione/helpdesk-dr
@@ -145,30 +71,22 @@ bash scripts/deploy/deploy-lambda-onprem.sh
 bash scripts/deploy/deploy-onprem-standby.sh
 ```
 
-Il primary usa `AUTOMATION_MODE=aws-lambda`; lo standby usa `AUTOMATION_MODE=lambda-dr`. La selezione avviene via configurazione Kubernetes, non con branching nella logica applicativa.
+Il primary usa `AUTOMATION_MODE=aws-lambda`; lo standby usa `AUTOMATION_MODE=lambda-dr`. La selezione avviene via configurazione Kubernetes, non con branching nella logica applicativa. Con LocalStack rimosso, il percorso `aws-lambda` del primary non ha piu' un endpoint configurato di default (vedi nota in "Obiettivo").
 
-### 5. Backup ogni 10 minuti
-
-```bash
-bash scripts/backup/backup-cloud.sh
-bash scripts/backup/install-cloud-backup-timer.sh
-```
-
-Ogni backup è compresso, accompagnato da SHA-256 e caricato nel bucket S3. Il timer usa `OnCalendar=*:0/10`, quindi gira ai minuti `00,10,20,30,40,50`.
-
-### 6. Rendere Ansible il coordinatore DR
+### 4. Rendere Ansible il coordinatore DR
 
 ```bash
 bash scripts/poc/bootstrap-ansible-control-node.sh
-bash scripts/poc/ansible-run.sh backup/sync-backups-onprem
 bash scripts/poc/ansible-run.sh poc/healthcheck
 ```
 
-Il bootstrap pubblica il repository sul Git server, prepara `/opt/helpdesk-dr` su `ansible-node`, installa AWS CLI/Ansible e abilita il timer di mirror. Il mirror gira ai minuti `05,15,25,35,45,55`, fuori dal failure domain cloud.
+Il bootstrap pubblica il repository sul Git server, prepara `/opt/helpdesk-dr` su `ansible-node` e installa Ansible.
 
 Il bootstrap abilita inoltre `boot.autostart=true` su `ansible-node`, così il coordinatore DR riparte automaticamente dopo un riavvio del daemon LXD o di WSL. Lo stop di `cloud-k3s` non arresta né riavvia il nodo Ansible.
 
 Per coordinare LXD, `ansible-node` usa solo il client dello snap: il relativo daemon annidato viene disabilitato e un proxy collega il client al socket del daemon host. Questo accesso equivale a privilegi root sull'host LXD: è un trust boundary intenzionale del lab e richiede che il nodo Ansible sia dedicato, amministrato e non accessibile a utenti non fidati.
+
+Prima del drill, copia manualmente un backup verificato (`helpdesk-<timestamp>.sql.gz` + `.sha256`) dentro `BACKUP_MIRROR_DIR/BACKUP_S3_PREFIX` su `ansible-node`: il timer automatico che popolava questo mirror da LocalStack S3 e' stato rimosso insieme a LocalStack.
 
 ## Verifica funzionale prima del DR
 
@@ -191,15 +109,10 @@ lxc exec pc-dipendente1 -- curl -fsS -X POST \
 Prima del DR la risposta deve includere:
 
 ```json
-{"provider":"aws-lambda","runtime":"localstack-cloud"}
+{"provider":"aws-lambda","runtime":"aws-lambda-cloud"}
 ```
 
-Forza un backup e sincronizzalo off-site prima del drill:
-
-```bash
-bash scripts/backup/backup-cloud.sh
-bash scripts/poc/ansible-run.sh backup/sync-backups-onprem
-```
+Questa chiamata richiede che `AWS_ENDPOINT_URL` sia configurato per il primary (vedi nota in "Obiettivo"); senza LocalStack va puntato a un endpoint Lambda reale o a un altro emulatore AWS a scelta.
 
 ## Disaster recovery drill
 
@@ -219,19 +132,7 @@ La probe del controller è passiva: non riavvia il primary. Il playbook Ansible:
 5. abilita la readiness on-prem;
 6. cambia il record DNS autorevole.
 
-### Guasto cloud completo
-
-Per dimostrare che il restore non dipende da LocalStack durante l'incidente:
-
-```bash
-lxc stop cloud-k3s --force
-cd ../localstack
-bash scripts/stop.sh
-cd ../helpdesk-dr
-bash scripts/poc/ansible-run.sh failover/dr-controller oneshot
-```
-
-Questa prova funziona solo se il mirror Ansible è già stato sincronizzato.
+Questa prova funziona solo se il mirror on-prem contiene gia' un backup verificato (vedi "Rendere Ansible il coordinatore DR").
 
 ## Verifica dopo il DR
 
@@ -250,20 +151,17 @@ La seconda invocazione deve includere:
 
 ## RPO e RTO misurabili
 
-- backup cloud: ogni 10 minuti;
-- mirror on-prem: ogni 10 minuti, sfalsato di 5 minuti;
-- RPO massimo teorico della copia on-prem: circa 15 minuti;
+- RPO: dipende dall'eta' dell'ultimo backup copiato manualmente in `BACKUP_MIRROR_DIR` su `ansible-node` (il backup automatico cloud -> S3 -> mirror e' stato rimosso insieme a LocalStack);
 - RTO: restore PostgreSQL + rollout/readiness + aggiornamento DNS;
 - TTL DNS: 30 secondi.
 
-Per sostenere un RPO on-prem effettivo di 10 minuti occorre sostituire il polling con replica S3 cross-region/event-driven oppure streaming WAL continuo. La PoC attuale privilegia leggibilità e verificabilità del processo.
+Per un RPO on-prem stringente occorre reintrodurre un meccanismo di backup/sync periodico (verso AWS reale o altro storage), sostituendo il polling manuale con replica S3 cross-region/event-driven oppure streaming WAL continuo. La PoC attuale privilegia leggibilità e verificabilità del processo di restore/failover, non l'automazione del trasporto del backup.
 
 ## Limiti dichiarati
 
-- Nella modalità predefinita LocalStack riproduce S3, Lambda, IAM, EC2 e STS; `cloud-k3s` riproduce il data plane Kubernetes ma non le API gestite `eks:*`, disponibili soltanto nel piano LocalStack Ultimate.
-- Anche abilitando l'API EKS di LocalStack, la PoC non riproduce l'HA fisica multi-AZ di AWS EKS.
+- Il control plane AWS simulato via LocalStack e' stato rimosso: `cloud-k3s` resta il data plane Kubernetes EKS-like, ma senza un emulatore AWS dietro. Il primary in modalita' `AUTOMATION_MODE=aws-lambda` fallisce esplicitamente finche' `AWS_ENDPOINT_URL` non viene ricollegato a un endpoint Lambda reale o a un altro emulatore.
+- Il backup periodico cloud -> S3 e il mirror automatico on-prem sono stati rimossi insieme a LocalStack: il popolamento di `BACKUP_MIRROR_DIR` e' oggi manuale.
 - `cloud-k3s` e `k3s-datacenter` sono cluster mononodo.
 - PostgreSQL usa dump/restore, non replica WAL o managed RDS.
 - Il cutback resta manuale perché manca la replica dei dati modificati durante il periodo DR verso il primary.
-- Le credenziali `test` sono accettabili solo per LocalStack; non devono diventare credenziali AWS reali.
 - I container k3s LXD privilegiati sono una concessione del laboratorio, non una configurazione production.

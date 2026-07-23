@@ -149,6 +149,12 @@ kind: Ingress
 metadata:
   name: helpdesk
   namespace: helpdesk
+  annotations:
+    # Lower than the Helios ingress's explicit priority (100, see
+    # infra/onprem/application/ingress.yaml) so the two coexist deterministically
+    # when both generations are deployed to the same on-prem cluster: this
+    # legacy compatibility path only wins if the Helios ingress is absent.
+    traefik.ingress.kubernetes.io/router.priority: "1"
 spec:
   rules:
     - host: helpdesk.azienda.lan

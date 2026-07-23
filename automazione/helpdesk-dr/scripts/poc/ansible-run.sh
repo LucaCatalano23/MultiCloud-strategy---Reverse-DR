@@ -9,7 +9,6 @@ script_name="${1:-}"
 if [ -z "${script_name}" ]; then
   echo "Usage: $0 <category/script-without-.sh> [args...]" >&2
   echo "Example: $0 poc/healthcheck" >&2
-  echo "Example: $0 backup/backup-cloud" >&2
   echo "Example: $0 failover/failover-to-onprem" >&2
   exit 1
 fi

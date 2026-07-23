@@ -42,7 +42,14 @@ configMapGenerator:
       - OIDC_JWKS_URL=http://keycloak.helios-identity.svc.cluster.local:8080/realms/helios-desk/protocol/openid-connect/certs
       - OIDC_ROLES_CLAIM=roles
       - OIDC_REQUIRED_ALGORITHMS=RS256
-      - OIDC_SCOPES=openid profile email offline_access
+      # offline_access is intentionally excluded: it requests a long-lived
+      # token outliving the browser SSO session, which needs Keycloak's
+      # default "offline_access" realm role. A partial realm JSON import
+      # (see keycloak/realm/helios-desk-realm.json) does not auto-create
+      # that default role the way creating a realm through the admin
+      # console/API does. The BFF's normal (non-offline) refresh token
+      # already works via use.refresh.tokens=true without this scope.
+      - OIDC_SCOPES=openid profile email
       - OIDC_CLIENT_ID=helios-bff
       - OIDC_REDIRECT_URI=https://helpdesk.azienda.lan/api/v1/auth/callback
       - OIDC_POST_LOGOUT_REDIRECT_URI=https://helpdesk.azienda.lan/

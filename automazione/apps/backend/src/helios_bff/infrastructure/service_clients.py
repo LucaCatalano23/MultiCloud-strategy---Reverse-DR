@@ -9,6 +9,19 @@ class UpstreamServiceError(RuntimeError):
     """Failure at a downstream HTTP boundary without response-body leakage."""
 
 
+class UpstreamStatusError(UpstreamServiceError):
+    """Downstream responded with an HTTP error status.
+
+    Carries only the status code, never the upstream response body, so the BFF
+    can surface a truthful status (es. 403 permesso mancante, 422 payload non
+    valido) invece di mascherare tutto dietro un 502 opaco.
+    """
+
+    def __init__(self, status_code: int, message: str) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
 class HttpTicketClient:
     def __init__(self, base_url: str, client: httpx.AsyncClient) -> None:
         self._base_url = base_url.rstrip("/")
@@ -45,13 +58,15 @@ class HttpTicketClient:
             )
             response.raise_for_status()
             payload = response.json()
-            if not isinstance(payload, dict):
-                raise UpstreamServiceError("ticket service returned an invalid payload")
-            return payload
-        except UpstreamServiceError:
-            raise
+        except httpx.HTTPStatusError as exc:
+            raise UpstreamStatusError(
+                exc.response.status_code, "ticket service returned an error status"
+            ) from exc
         except (httpx.HTTPError, ValueError) as exc:
             raise UpstreamServiceError("ticket service request failed") from exc
+        if not isinstance(payload, dict):
+            raise UpstreamServiceError("ticket service returned an invalid payload")
+        return payload
 
 
 class HttpPlatformProbe:

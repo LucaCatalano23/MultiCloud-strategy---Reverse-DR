@@ -1,6 +1,6 @@
 # Topologia progetto Reverse DR
 
-> Evoluzione production-like: LocalStack espone le API EKS, S3, IAM e Lambda; `cloud-k3s` e il data plane associato a EKS; `ansible-node` mantiene un mirror off-cloud dei backup e orchestra il failover. Il runbook operativo aggiornato e in [`RUNBOOK_SCENARIO_REALE.md`](RUNBOOK_SCENARIO_REALE.md).
+> Evoluzione production-like: `cloud-k3s` e il data plane EKS-like del sito cloud simulato; `ansible-node` mantiene un mirror off-cloud dei backup (oggi popolato manualmente) e orchestra il failover. La simulazione delle API AWS (EKS/S3/IAM/Lambda) via LocalStack e' stata rimossa: quella copertura resta solo nella generazione corrente con AWS reale. Il runbook operativo aggiornato e in [`RUNBOOK_SCENARIO_REALE.md`](RUNBOOK_SCENARIO_REALE.md).
 
 Questo documento descrive la topologia LXC/Kubernetes della PoC: rete on-premise, cloud simulato, servizi applicativi, DNS, Git, backup e flusso di disaster recovery.
 
@@ -208,13 +208,13 @@ sequenceDiagram
 
 | Componente | Dove gira | Responsabilita |
 |---|---|---|
-| `backup-cloud.sh` | host WSL / ansible-node operativo | genera backup SQL da Postgres cloud |
-| `cloud-local-backup.sh` | `cloud-k3s` via timer | backup periodico locale nel cloud simulato |
-| `restore-onprem.sh` | host WSL / ansible-node operativo | copia ultimo backup e ripristina Postgres on-prem |
+| `restore-onprem.sh` | host WSL / ansible-node operativo | copia ultimo backup dal mirror e ripristina Postgres on-prem |
 | `promote-onprem.sh` | `ansible-node` | scala app on-prem, imposta `DR_ACTIVE=true`, verifica readiness e aggiorna DNS |
 | `demote-onprem.sh` | `ansible-node` | imposta `DR_ACTIVE=false` e riporta on-prem in standby |
 | `dr-controller.sh` | host WSL / ansible-node operativo | monitora primary e attiva failover automatico |
 | K8GB manifest | entrambi i cluster, futuro step | GSLB DNS failover basato su readiness |
+
+Il backup periodico del primary cloud verso S3 e il mirror automatico on-prem, prima orchestrati via LocalStack, sono stati rimossi insieme a LocalStack: il mirror consumato da `restore-onprem.sh` va oggi popolato manualmente su `ansible-node`.
 
 ## Scelta architetturale
 

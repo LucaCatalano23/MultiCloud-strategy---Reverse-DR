@@ -187,13 +187,21 @@ class RealmContractTest(unittest.TestCase):
             },
         )
 
-        bff = next(client for client in self.realm["clients"] if client["clientId"] == "helios-bff")
-        mappers = {mapper["name"]: mapper for mapper in bff["protocolMappers"]}
+        # These mappers live on the "roles" client scope, not as dedicated
+        # (client-level) mappers: Keycloak 26.7's generate-example-id-token
+        # tool confirmed dedicated mappers are listed as applicable but are
+        # silently omitted from issued tokens, while client-scope mappers
+        # are applied correctly. helios-bff has "roles" as a default scope,
+        # so this still applies to every token it is issued.
+        roles_scope = next(s for s in self.realm["clientScopes"] if s["name"] == "roles")
+        mappers = {mapper["name"]: mapper for mapper in roles_scope["protocolMappers"]}
         self.assertEqual("roles", mappers["roles"]["config"]["claim.name"])
         self.assertEqual(
             "${HELIOS_API_AUDIENCE}",
             mappers["api-audience"]["config"]["included.custom.audience"],
         )
+        bff = next(client for client in self.realm["clients"] if client["clientId"] == "helios-bff")
+        self.assertIn("roles", bff.get("defaultClientScopes", []))
         bff_scope = self.realm["clientScopeMappings"]["helios-bff"]
         self.assertEqual("helios-api", bff_scope[0]["client"])
         self.assertEqual(EXPECTED_PERMISSIONS, set(bff_scope[0]["roles"]))
@@ -202,6 +210,34 @@ class RealmContractTest(unittest.TestCase):
         self.assertNotIn("users", self.realm)
         serialized = json.dumps(self.realm)
         self.assertNotIn('"password"', serialized.lower())
+
+    def test_referenced_client_scopes_are_actually_defined(self) -> None:
+        # A partial realm import (as opposed to creating a realm through the
+        # admin console/API) does not auto-create Keycloak's built-in scopes
+        # (profile, email, roles, ...). Referencing them by name without a
+        # matching "clientScopes" entry silently drops their protocol
+        # mappers from every issued token (roles/employee_id go missing)
+        # instead of failing the import outright.
+        defined = {scope["name"] for scope in self.realm.get("clientScopes", [])}
+        referenced = set(self.realm.get("defaultDefaultClientScopes", [])) | set(
+            self.realm.get("defaultOptionalClientScopes", [])
+        )
+        self.assertTrue(
+            referenced.issubset(defined),
+            f"referenced but undefined client scopes: {referenced - defined}",
+        )
+        roles_scope = next(s for s in self.realm["clientScopes"] if s["name"] == "roles")
+        self.assertEqual("openid-connect", roles_scope["protocol"])
+
+        # "basic" carries Keycloak's oidc-sub-mapper (the access token's
+        # "sub" claim). It is not implied by realm-level defaults on every
+        # import path, so helios-bff must list it explicitly, or resource
+        # servers reject the access token outright (MissingRequiredClaimError).
+        basic_scope = next(s for s in self.realm["clientScopes"] if s["name"] == "basic")
+        mapper_types = {m["protocolMapper"] for m in basic_scope["protocolMappers"]}
+        self.assertIn("oidc-sub-mapper", mapper_types)
+        bff = next(c for c in self.realm["clients"] if c["clientId"] == "helios-bff")
+        self.assertIn("basic", bff.get("defaultClientScopes", []))
 
 
 class ExistingDrIntegrationContractTest(unittest.TestCase):
