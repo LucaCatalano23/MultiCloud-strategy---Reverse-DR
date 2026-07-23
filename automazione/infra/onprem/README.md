@@ -7,7 +7,8 @@ Questo overlay aggiunge al cluster k3s on-prem **esistente** un data plane Helio
 - `helios-desk` contiene React, BFF, ticket service e automation service. I quattro Deployment partono con `replicas: 0`.
 - `helios-identity` contiene Keycloak e un PostgreSQL dedicato, entrambi con una replica. L'identita resta warm perche il failover non puo cambiare DNS prima che login, realm e JWKS siano disponibili.
 - Il database Keycloak e separato dal database applicativo. Il restore dei ticket puo quindi ricreare lo schema applicativo senza cancellare realm, client, ruoli o credenziali.
-- Il PostgreSQL applicativo resta quello ripristinato dalla procedura DR esistente. Il Secret `helios-app-database` contiene il suo `DATABASE_URL`; nella PoC punta normalmente a `postgres.helpdesk.svc.cluster.local:5432`.
+- Il PostgreSQL applicativo resta quello ripristinato dalla procedura DR esistente. Il Secret `helios-app-database` contiene il suo `DATABASE_URL`; nella PoC punta all'istanza `postgres.helpdesk.svc.cluster.local:5432`, ma **a un database dedicato `helios`, non al database legacy `helpdesk`**. Quel database ospita il monolite legacy e contiene gia una tabella `tickets` con schema diverso (id `bigint`, senza `assignee`/`service`/`environment`/`created_by`/`updated_at`); poiche le migrazioni correnti usano `CREATE TABLE IF NOT EXISTS`, riusare `helpdesk` lascia lo schema legacy invariato e la creazione ticket fallisce con HTTP 500 (mostrato come 502 dal BFF). `create-secrets.sh` rifiuta esplicitamente un `HELIOS_DATABASE_URL` che punta a `helpdesk` (vedi CLAUDE.md §1, le due generazioni non vanno confuse).
+- Lo schema applicativo non viene creato dai container all'avvio (i Dockerfile non eseguono migrazioni). Va applicato esplicitamente al database dedicato con `scripts/apply-migrations.sh`, che lancia un Job effimero `postgres:16-alpine` alimentato dal Secret `helios-app-database`. Le migrazioni sono idempotenti (`CREATE TABLE IF NOT EXISTS`), quindi lo script e sicuro da rieseguire. Il Job e coperto dalla NetworkPolicy `db-migrate-egress` (solo DNS + PostgreSQL applicativo, nessun Ingress).
 - Il browser parla soltanto con React e BFF sullo stesso origin. Ticket e automation sono `ClusterIP`; nessun token viene consegnato al frontend.
 - Keycloak usa l'immagine ufficiale in production mode, TLS terminato da Traefik, import di realm al primo avvio e storage PostgreSQL persistente. `KC_CACHE=local` e intenzionale per il cluster k3s a nodo singolo; prima di scalare Keycloak a piu repliche va introdotta una configurazione cache/HA supportata.
 
@@ -65,10 +66,13 @@ Lo script `scripts/create-secrets.sh` legge valori dall'ambiente, usa file tempo
 
 Una coppia wildcard puo essere fornita una sola volta con `HELIOS_TLS_CERT_FILE` e `HELIOS_TLS_KEY_FILE`. I file e i valori reali restano fuori da Git.
 
+`HELIOS_DATABASE_URL` deve puntare a un database **dedicato** (es. `.../helios`), distinto dal database legacy `helpdesk`; `create-secrets.sh` rifiuta il nome `helpdesk`. Il database va creato una volta sul server applicativo, ad esempio `CREATE DATABASE helios OWNER <ruolo_app>;`.
+
 ```bash
 cd automazione/infra/onprem
 bash scripts/create-secrets.sh
 kubectl apply -k .
+bash scripts/apply-migrations.sh   # applica lo schema al database dedicato (idempotente)
 kubectl -n helios-identity rollout status statefulset/keycloak-postgres --timeout=300s
 kubectl -n helios-identity rollout status deployment/keycloak --timeout=300s
 bash scripts/provision-dr-operator.sh
@@ -110,6 +114,7 @@ Entrambi i namespace applicano default deny. Sono consentiti soltanto:
 - BFF -> ticket, automation, Keycloak e PostgreSQL applicativo;
 - ticket -> automation, Keycloak e PostgreSQL applicativo;
 - automation -> Keycloak, PostgreSQL applicativo ed `event-adapter` nel namespace `lambda-dr`;
+- Job di migrazione (`helios-db-migrate`) -> CoreDNS e PostgreSQL applicativo, nessun Ingress;
 - Keycloak -> PostgreSQL Keycloak;
 - DNS verso CoreDNS e il Job di provisioning -> Keycloak.
 

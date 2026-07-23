@@ -95,6 +95,20 @@ case "${HELIOS_DATABASE_URL}" in
     ;;
 esac
 
+# La generazione corrente (helios) DEVE usare un database dedicato, distinto dal
+# monolite legacy `helpdesk`. Quel database ha gia' una tabella `tickets` con lo
+# schema del monolite (id bigint, senza assignee/service/environment/created_by/
+# updated_at); poiche' le migrazioni correnti usano CREATE TABLE IF NOT EXISTS,
+# riusare quel database lascia lo schema legacy invariato e la creazione ticket
+# fallisce silenziosamente con HTTP 500 (poi 502 dal BFF). Vedi CLAUDE.md §1
+# (le due generazioni non vanno confuse) e apply-migrations.sh.
+helios_db_name="${HELIOS_DATABASE_URL##*/}"
+helios_db_name="${helios_db_name%%\?*}"
+if [ "${helios_db_name}" = "helpdesk" ]; then
+  echo "HELIOS_DATABASE_URL non deve puntare al database legacy 'helpdesk': usa un database dedicato (es. .../helios)." >&2
+  exit 1
+fi
+
 python3 - <<'PY'
 import base64
 import os

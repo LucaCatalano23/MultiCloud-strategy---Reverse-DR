@@ -126,6 +126,9 @@ class OnPremManifestContractTest(unittest.TestCase):
         self.assertIn("name: web-egress", self.rendered)
         self.assertIn("name: keycloak-postgres-ingress", self.rendered)
         self.assertIn("kubernetes.io/metadata.name: lambda-dr", self.rendered)
+        # Il Job effimero di migrazione schema (scripts/apply-migrations.sh) deve
+        # avere una egress dedicata (DNS + PostgreSQL applicativo) sotto default-deny.
+        self.assertIn("name: db-migrate-egress", self.rendered)
 
     def test_react_runtime_contract_uses_the_bff_csrf_cookie(self) -> None:
         # runtime-config.json is rendered at container start by

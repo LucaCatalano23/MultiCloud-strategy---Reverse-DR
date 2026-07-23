@@ -19,6 +19,7 @@ python3 "${ONPREM_DIR}/tests/validate_onprem.py"
 
 bash -n \
   "${ONPREM_DIR}/scripts/create-secrets.sh" \
+  "${ONPREM_DIR}/scripts/apply-migrations.sh" \
   "${ONPREM_DIR}/scripts/provision-dr-operator.sh" \
   "${ONPREM_DIR}/keycloak/provision/provision-dr-operator.sh" \
   "${HELPDESK_DR_DIR}/scripts/deploy/deploy-onprem-standby.sh" \
