@@ -42,6 +42,7 @@ configMapGenerator:
       - OIDC_JWKS_URL=http://keycloak.helios-identity.svc.cluster.local:8080/realms/helios-desk/protocol/openid-connect/certs
       - OIDC_ROLES_CLAIM=roles
       - OIDC_REQUIRED_ALGORITHMS=RS256
+      - OIDC_SCOPES=openid profile email offline_access
       - OIDC_CLIENT_ID=helios-bff
       - OIDC_REDIRECT_URI=https://helpdesk.azienda.lan/api/v1/auth/callback
       - OIDC_POST_LOGOUT_REDIRECT_URI=https://helpdesk.azienda.lan/
@@ -52,7 +53,4 @@ configMapGenerator:
       - AUTOMATION_SERVICE_URL=http://helios-automation-service.helios-desk.svc.cluster.local:8002
       - AUTOMATION_MODE=lambda-dr
       - LAMBDA_DR_BASE_URL=http://event-adapter.lambda-dr.svc.cluster.local:8080
-  - name: helios-web-runtime
-    namespace: helios-desk
-    files:
-      - runtime-config.json=application/runtime-config.json
+      - HELPDESK_LAMBDA_FUNCTION_NAME=helpdesk-ticket-processor

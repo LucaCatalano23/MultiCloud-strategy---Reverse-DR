@@ -105,6 +105,7 @@ class OnPremManifestContractTest(unittest.TestCase):
         self.assertIn("OIDC_AUDIENCE", self.rendered)
         self.assertIn("api://reverse-dr-helpdesk", self.rendered)
         self.assertIn("OIDC_ROLES_CLAIM", self.rendered)
+        self.assertIn("OIDC_SCOPES", self._deployment_document("helios-bff"))
         self.assertIn("IDENTITY_PROVIDER", self.rendered)
         self.assertIn("IDENTITY_PROVIDER: keycloak", self.rendered)
         self.assertNotIn("OIDC_CLIENT_SECRET", self._deployment_document("helios-web"))
@@ -113,6 +114,7 @@ class OnPremManifestContractTest(unittest.TestCase):
         automation = self._deployment_document("helios-automation-service")
         self.assertIn("AUTOMATION_MODE", automation)
         self.assertIn("LAMBDA_DR_BASE_URL", automation)
+        self.assertIn("HELPDESK_LAMBDA_FUNCTION_NAME", automation)
         self.assertNotIn("AUTOMATION_MODE", self._deployment_document("helios-bff"))
         self.assertNotIn(
             "AUTOMATION_MODE", self._deployment_document("helios-ticket-service")
@@ -121,18 +123,37 @@ class OnPremManifestContractTest(unittest.TestCase):
     def test_default_deny_and_explicit_service_flows_are_rendered(self) -> None:
         self.assertGreaterEqual(self.rendered.count("name: default-deny"), 2)
         self.assertIn("name: bff-egress", self.rendered)
+        self.assertIn("name: web-egress", self.rendered)
         self.assertIn("name: keycloak-postgres-ingress", self.rendered)
         self.assertIn("kubernetes.io/metadata.name: lambda-dr", self.rendered)
 
     def test_react_runtime_contract_uses_the_bff_csrf_cookie(self) -> None:
-        runtime = json.loads(
-            (ROOT / "application" / "runtime-config.json").read_text(encoding="utf-8")
-        )
-        self.assertEqual("Helios Desk", runtime["appName"])
-        self.assertEqual("/api/v1", runtime["apiBasePath"])
-        self.assertFalse(runtime["demoMode"])
-        self.assertEqual("__Host-helios_csrf", runtime["csrfCookieName"])
-        self.assertEqual("X-CSRF-Token", runtime["csrfHeaderName"])
+        # runtime-config.json is rendered at container start by
+        # apps/frontend/deploy/40-runtime-config.sh from these Dockerfile
+        # ENV defaults into a writable emptyDir; no ConfigMap is involved.
+        dockerfile = (
+            AUTOMAZIONE_ROOT / "apps" / "frontend" / "Dockerfile"
+        ).read_text(encoding="utf-8")
+        self.assertIn("HELIOS_API_BASE_PATH=/api/v1", dockerfile)
+        self.assertIn("HELIOS_DEMO_MODE=false", dockerfile)
+        self.assertIn("HELIOS_CSRF_COOKIE_NAME=__Host-helios_csrf", dockerfile)
+        self.assertIn("HELIOS_CSRF_HEADER_NAME=X-CSRF-Token", dockerfile)
+
+        template = (
+            AUTOMAZIONE_ROOT
+            / "apps"
+            / "frontend"
+            / "deploy"
+            / "runtime-config.json.template"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"appName": "Helios Desk"', template)
+        self.assertIn("${HELIOS_API_BASE_PATH}", template)
+        self.assertIn("${HELIOS_CSRF_COOKIE_NAME}", template)
+
+        rendered = self.rendered
+        self.assertNotIn("helios-web-runtime", rendered)
+        web_deployment = self._deployment_document("helios-web")
+        self.assertIn("mountPath: /usr/share/nginx/html/config\n", web_deployment)
 
     def _deployment_document(self, deployment_name: str) -> str:
         for document in self.documents:

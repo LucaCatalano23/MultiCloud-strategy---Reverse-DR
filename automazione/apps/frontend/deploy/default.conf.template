@@ -4,6 +4,16 @@ server {
   server_name _;
   server_tokens off;
 
+  # The upstream is resolved through a variable (not a bare proxy_pass
+  # hostname) so nginx re-resolves it at request time via this resolver
+  # instead of once at config load. A bare hostname makes nginx refuse to
+  # start ("host not found in upstream") if helios-bff's Service DNS is not
+  # yet resolvable at the exact moment this container starts.
+  # NGINX_LOCAL_RESOLVERS is computed by the base image's own
+  # /docker-entrypoint.d/15-local-resolvers.envsh from /etc/resolv.conf,
+  # opted into by NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 (see Dockerfile).
+  resolver ${NGINX_LOCAL_RESOLVERS} valid=10s;
+
   root /usr/share/nginx/html;
   index index.html;
 
@@ -30,7 +40,8 @@ server {
   }
 
   location ^~ /api/ {
-    proxy_pass ${HELIOS_API_UPSTREAM};
+    set $api_upstream ${HELIOS_API_UPSTREAM};
+    proxy_pass $api_upstream;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;

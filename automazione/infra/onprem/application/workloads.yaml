@@ -169,6 +169,11 @@ spec:
                 configMapKeyRef:
                   name: helios-onprem-config
                   key: LAMBDA_DR_BASE_URL
+            - name: HELPDESK_LAMBDA_FUNCTION_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: HELPDESK_LAMBDA_FUNCTION_NAME
             - name: DR_ACTIVE
               valueFrom:
                 configMapKeyRef:
@@ -348,6 +353,11 @@ spec:
                 configMapKeyRef:
                   name: helios-onprem-config
                   key: OIDC_REQUIRED_ALGORITHMS
+            - name: OIDC_SCOPES
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_SCOPES
             - name: OIDC_CLIENT_ID
               valueFrom:
                 configMapKeyRef:
@@ -511,23 +521,28 @@ spec:
                 - ALL
           volumeMounts:
             - name: runtime-config
-              mountPath: /usr/share/nginx/html/config/runtime-config.json
-              subPath: runtime-config.json
-              readOnly: true
+              mountPath: /usr/share/nginx/html/config
             - name: nginx-cache
               mountPath: /var/cache/nginx
             - name: nginx-run
               mountPath: /var/run
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
             - name: tmp
               mountPath: /tmp
       volumes:
         - name: runtime-config
-          configMap:
-            name: helios-web-runtime
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Mi
         - name: nginx-cache
           emptyDir:
             sizeLimit: 32Mi
         - name: nginx-run
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Mi
+        - name: nginx-conf
           emptyDir:
             medium: Memory
             sizeLimit: 8Mi

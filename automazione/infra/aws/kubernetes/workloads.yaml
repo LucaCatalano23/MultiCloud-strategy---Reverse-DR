@@ -71,23 +71,26 @@ spec:
               drop: ["ALL"]
           volumeMounts:
             - name: runtime-config
-              mountPath: /usr/share/nginx/html/config/runtime-config.json
-              subPath: runtime-config.json
-              readOnly: true
+              mountPath: /usr/share/nginx/html/config
             - name: nginx-cache
               mountPath: /var/cache/nginx
             - name: nginx-run
               mountPath: /var/run
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
             - name: tmp
               mountPath: /tmp
       volumes:
         - name: runtime-config
-          configMap:
-            name: helios-web-runtime
+          emptyDir:
+            sizeLimit: 8Mi
         - name: nginx-cache
           emptyDir:
             sizeLimit: 64Mi
         - name: nginx-run
+          emptyDir:
+            sizeLimit: 8Mi
+        - name: nginx-conf
           emptyDir:
             sizeLimit: 8Mi
         - name: tmp

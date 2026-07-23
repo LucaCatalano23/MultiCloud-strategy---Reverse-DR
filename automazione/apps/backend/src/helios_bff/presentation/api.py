@@ -163,7 +163,7 @@ def create_app(
         response.delete_cookie(STATE_COOKIE, path="/", secure=True, httponly=True, samesite="lax")
         return response
 
-    @app.post("/api/v1/auth/logout", status_code=204)
+    @app.post("/api/v1/auth/logout", status_code=204, response_class=Response, response_model=None)
     async def logout(
         request: Request,
         response: Response,

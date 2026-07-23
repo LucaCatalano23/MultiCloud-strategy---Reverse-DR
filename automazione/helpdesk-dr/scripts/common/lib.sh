@@ -68,6 +68,10 @@ container_running() {
   [ "$(lxc_retry list "$1" -c s --format csv 2>/dev/null | tr '[:lower:]' '[:upper:]')" = "RUNNING" ]
 }
 
+container_exists() {
+  lxc list "$1" -c n --format csv 2>/dev/null | grep -qx "$1"
+}
+
 ensure_container_started() {
   local container="$1"
 

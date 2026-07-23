@@ -23,11 +23,12 @@ COPY --chown=101:101 deploy/runtime-config.json.template /opt/helios/runtime-con
 COPY deploy/40-runtime-config.sh /docker-entrypoint.d/40-runtime-config.sh
 RUN chmod 0755 /docker-entrypoint.d/40-runtime-config.sh
 
-ENV HELIOS_API_UPSTREAM=http://helios-bff:8000 \
+ENV HELIOS_API_UPSTREAM=http://helios-bff.helios-desk.svc.cluster.local:8000 \
     HELIOS_API_BASE_PATH=/api/v1 \
     HELIOS_DEMO_MODE=false \
     HELIOS_CSRF_COOKIE_NAME=__Host-helios_csrf \
-    HELIOS_CSRF_HEADER_NAME=X-CSRF-Token
+    HELIOS_CSRF_HEADER_NAME=X-CSRF-Token \
+    NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
 
 USER 101
 EXPOSE 8080
