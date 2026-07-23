@@ -88,6 +88,18 @@ class PostgresTicketRepository:
                 await _insert_events(connection, events)
         return ticket
 
+    async def delete(self, ticket_id: UUID, events: tuple[EventEnvelope, ...]) -> bool:
+        async with self._pool.connection() as connection:
+            async with connection.transaction():
+                result = await connection.execute(
+                    "DELETE FROM tickets WHERE id = %s",
+                    (ticket_id,),
+                )
+                if result.rowcount != 1:
+                    return False
+                await _insert_events(connection, events)
+        return True
+
     async def ping(self) -> bool:
         async with self._pool.connection() as connection:
             await connection.execute("SELECT 1")

@@ -3,6 +3,7 @@ import { filterTickets } from '../domain/ticketFilter'
 import type { Ticket, TicketFilters } from '../domain/types'
 import type { RuntimeConfig } from '../infrastructure/runtimeConfig'
 import type { HeliosGateway } from '../infrastructure/types'
+import { EditTicketDialog } from './components/EditTicketDialog'
 import { ErrorState, LoadingState, LoginState } from './components/FullPageState'
 import { MetricStrip } from './components/MetricStrip'
 import { NewTicketDialog } from './components/NewTicketDialog'
@@ -38,13 +39,14 @@ interface AppProps {
 }
 
 export function App({ gateway, runtimeConfig }: AppProps) {
-  const { state, reload, createTicket } = useDashboard(gateway)
+  const { state, reload, createTicket, updateTicket, deleteTicket } = useDashboard(gateway)
   const [activeSection, setActiveSection] = useState<NavigationKey>('tickets')
   const [filters, setFilters] = useState<TicketFilters>(defaultFilters)
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [newTicketOpen, setNewTicketOpen] = useState(false)
+  const [editTicketOpen, setEditTicketOpen] = useState(false)
   const deferredQuery = useDeferredValue(filters.query)
 
   const tickets = state.phase === 'ready' ? state.tickets : noTickets
@@ -133,7 +135,15 @@ export function App({ gateway, runtimeConfig }: AppProps) {
                 />
               </div>
               {selectedTicket ? (
-                <TicketDrawer ticket={selectedTicket} onClose={() => setSelectedTicketId(null)} />
+                <TicketDrawer
+                  ticket={selectedTicket}
+                  onClose={() => setSelectedTicketId(null)}
+                  onEdit={() => setEditTicketOpen(true)}
+                  onDelete={async () => {
+                    await deleteTicket(selectedTicket.id)
+                    setSelectedTicketId(null)
+                  }}
+                />
               ) : null}
             </main>
             <OperationsRail platform={state.platform} />
@@ -155,6 +165,13 @@ export function App({ gateway, runtimeConfig }: AppProps) {
           const created = await createTicket(input)
           setFilters(defaultFilters)
           setSelectedTicketId(created.id)
+        }}
+      />
+      <EditTicketDialog
+        ticket={editTicketOpen ? selectedTicket : null}
+        onClose={() => setEditTicketOpen(false)}
+        onSave={async (id, input) => {
+          await updateTicket(id, input)
         }}
       />
       <span className="sr-only" aria-live="polite">

@@ -6,7 +6,7 @@ import type {
 } from '../domain/types'
 import type { HeliosGateway } from './types'
 
-const primaryTickets: readonly Ticket[] = [
+const primaryTicketSeeds: readonly Omit<Ticket, 'createdBy'>[] = [
   {
     id: 'TKT-2025-0578',
     title: 'Failover DB ordine non completato su AWS DR',
@@ -130,6 +130,14 @@ const primaryTickets: readonly Ticket[] = [
   },
 ]
 
+// Modalità dimostrativa: il creatore seed coincide, per plausibilità, con
+// l'assegnatario. In produzione il valore arriva dal token dell'utente reale
+// (vedi ticket-service _creator_identity).
+const primaryTickets: readonly Ticket[] = primaryTicketSeeds.map((seed) => ({
+  ...seed,
+  createdBy: seed.assignee ?? 'Luca Conti',
+}))
+
 const generatedTitles = [
   'Verifica replica database applicativa',
   'Controllo esito backup incrementale',
@@ -162,6 +170,7 @@ function buildGeneratedTickets(): Ticket[] {
       assignee: generatedAssignees[variant] ?? 'Luca Conti',
       service: generatedServices[variant] ?? 'Database',
       environment: variant % 2 === 0 ? 'AWS – Primary' : 'On-prem DR',
+      createdBy: generatedAssignees[variant] ?? 'Luca Conti',
       createdAt: '2026-07-20T08:00:00+02:00',
       updatedAt: `2026-07-${String(20 - (index % 8)).padStart(2, '0')}T12:00:00+02:00`,
     }
@@ -250,12 +259,29 @@ export function createDemoGateway(): HeliosGateway {
         id: `TKT-2025-${String(nextTicketNumber).padStart(4, '0')}`,
         status: 'open',
         assignee: input.assignee ?? null,
+        createdBy: session.user?.displayName ?? 'Utente demo',
         createdAt: now,
         updatedAt: now,
       }
       nextTicketNumber += 1
       tickets = [created, ...tickets]
       return { ...created }
+    },
+    updateTicket: async (id, input) => {
+      const existing = tickets.find((ticket) => ticket.id === id)
+      if (!existing) throw new Error('Ticket non trovato')
+      const updated: Ticket = {
+        ...existing,
+        ...input,
+        id,
+        assignee: input.assignee ?? null,
+        updatedAt: new Date().toISOString(),
+      }
+      tickets = tickets.map((ticket) => (ticket.id === id ? updated : ticket))
+      return { ...updated }
+    },
+    deleteTicket: async (id) => {
+      tickets = tickets.filter((ticket) => ticket.id !== id)
     },
     logout: async () => {
       session = { ...session, authenticated: false, user: null }

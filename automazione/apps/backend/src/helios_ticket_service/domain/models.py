@@ -96,6 +96,35 @@ class Ticket:
             updated_at=updated_at,
         )
 
+    def update(
+        self,
+        *,
+        title: str,
+        description: str,
+        priority: TicketPriority,
+        status: TicketStatus,
+        service: str,
+        environment: str,
+        assignee: str | None,
+        updated_at: datetime,
+    ) -> Ticket:
+        if self.status is TicketStatus.CLOSED and status is not TicketStatus.CLOSED:
+            raise DomainValidationError("closed tickets cannot be reopened")
+        # `replace` ricostruisce l'istanza, quindi __post_init__ rivalida titolo,
+        # descrizione, lunghezze e coerenza dei timestamp: un update invalido
+        # fallisce come DomainValidationError, non silenziosamente.
+        return replace(
+            self,
+            title=title.strip(),
+            description=description.strip(),
+            priority=priority,
+            status=status,
+            service=service.strip(),
+            environment=environment.strip(),
+            assignee=assignee.strip() if assignee else None,
+            updated_at=updated_at,
+        )
+
 
 def _validate_length(name: str, value: str, *, minimum: int, maximum: int) -> None:
     length = len(value.strip()) if isinstance(value, str) else 0

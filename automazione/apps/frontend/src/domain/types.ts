@@ -17,6 +17,7 @@ export interface Ticket {
   readonly assignee: string | null
   readonly service: string
   readonly environment: string
+  readonly createdBy: string
   readonly createdAt: string
   readonly updatedAt: string
 }
@@ -25,6 +26,16 @@ export interface CreateTicketInput {
   readonly title: string
   readonly description: string
   readonly priority: TicketPriority
+  readonly service: string
+  readonly environment: string
+  readonly assignee?: string | null
+}
+
+export interface UpdateTicketInput {
+  readonly title: string
+  readonly description: string
+  readonly priority: TicketPriority
+  readonly status: TicketStatus
   readonly service: string
   readonly environment: string
   readonly assignee?: string | null

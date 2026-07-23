@@ -45,14 +45,29 @@ class StubBrowserAuth:
 class StubTicketClient:
     def __init__(self) -> None:
         self.tokens: list[str] = []
+        self.deleted: list[str] = []
 
     async def list_tickets(self, access_token: str) -> dict[str, Any]:
         self.tokens.append(access_token)
         return {"data": [], "meta": {"nextCursor": None}}
 
+    async def get_ticket(self, access_token: str, ticket_id: str) -> dict[str, Any]:
+        self.tokens.append(access_token)
+        return {"data": {"id": ticket_id, "status": "open"}}
+
     async def create_ticket(self, access_token: str, payload: dict[str, Any]) -> dict[str, Any]:
         self.tokens.append(access_token)
         return {"data": {"id": "ticket-1", **payload}}
+
+    async def update_ticket(
+        self, access_token: str, ticket_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        self.tokens.append(access_token)
+        return {"data": {"id": ticket_id, **payload}}
+
+    async def delete_ticket(self, access_token: str, ticket_id: str) -> None:
+        self.tokens.append(access_token)
+        self.deleted.append(ticket_id)
 
     async def ping(self) -> bool:
         return True
@@ -65,7 +80,18 @@ class FailingTicketClient:
     async def list_tickets(self, access_token: str) -> dict[str, Any]:
         raise self._error
 
+    async def get_ticket(self, access_token: str, ticket_id: str) -> dict[str, Any]:
+        raise self._error
+
     async def create_ticket(self, access_token: str, payload: dict[str, Any]) -> dict[str, Any]:
+        raise self._error
+
+    async def update_ticket(
+        self, access_token: str, ticket_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        raise self._error
+
+    async def delete_ticket(self, access_token: str, ticket_id: str) -> None:
         raise self._error
 
     async def ping(self) -> bool:
@@ -179,6 +205,48 @@ VALID_TICKET_PAYLOAD = {
     "service": "Ordini e-Commerce",
     "environment": "On-prem DR",
 }
+
+
+@pytest.mark.integration
+def test_bff_proxies_update_and_delete_with_server_side_token() -> None:
+    ticket_client = StubTicketClient()
+    app = create_app(
+        auth=StubBrowserAuth(authenticated=True),
+        tickets=ticket_client,
+        platform=StubPlatformProbe(),
+        site=SITE,
+    )
+
+    with TestClient(app, base_url="https://desk.example.test") as client:
+        client.cookies.set("__Host-helios_session", "opaque-session")
+        updated = client.patch(
+            "/api/v1/tickets/ticket-9",
+            json={**VALID_TICKET_PAYLOAD, "status": "in_progress"},
+        )
+        deleted = client.delete("/api/v1/tickets/ticket-9")
+
+    assert updated.status_code == 200
+    assert updated.json()["data"]["status"] == "in_progress"
+    assert deleted.status_code == 204
+    assert ticket_client.deleted == ["ticket-9"]
+    assert ticket_client.tokens == ["server-side-access-token", "server-side-access-token"]
+
+
+@pytest.mark.integration
+def test_bff_delete_maps_upstream_not_found_to_404() -> None:
+    app = create_app(
+        auth=StubBrowserAuth(authenticated=True),
+        tickets=FailingTicketClient(UpstreamStatusError(404, "missing")),
+        platform=StubPlatformProbe(),
+        site=SITE,
+    )
+
+    with TestClient(app, base_url="https://desk.example.test") as client:
+        client.cookies.set("__Host-helios_session", "opaque-session")
+        response = client.delete("/api/v1/tickets/ticket-404")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "upstream_not_found"
 
 
 @pytest.mark.integration

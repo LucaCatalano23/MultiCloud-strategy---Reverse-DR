@@ -30,10 +30,35 @@ class HttpTicketClient:
     async def list_tickets(self, access_token: str) -> dict[str, Any]:
         return await self._request("GET", "/api/v1/tickets", access_token)
 
+    async def get_ticket(self, access_token: str, ticket_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/api/v1/tickets/{ticket_id}", access_token)
+
     async def create_ticket(
         self, access_token: str, payload: Mapping[str, Any]
     ) -> dict[str, Any]:
         return await self._request("POST", "/api/v1/tickets", access_token, json=dict(payload))
+
+    async def update_ticket(
+        self, access_token: str, ticket_id: str, payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        return await self._request(
+            "PATCH", f"/api/v1/tickets/{ticket_id}", access_token, json=dict(payload)
+        )
+
+    async def delete_ticket(self, access_token: str, ticket_id: str) -> None:
+        try:
+            response = await self._client.request(
+                "DELETE",
+                f"{self._base_url}/api/v1/tickets/{ticket_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise UpstreamStatusError(
+                exc.response.status_code, "ticket service returned an error status"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise UpstreamServiceError("ticket service request failed") from exc
 
     async def ping(self) -> bool:
         try:

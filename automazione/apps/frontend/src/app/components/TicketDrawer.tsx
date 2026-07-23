@@ -1,4 +1,4 @@
-import { Check, MoreVertical, UserRoundPlus, X } from 'lucide-react'
+import { Check, Pencil, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { formatUpdatedAt } from '../../domain/presentation'
 import type { Ticket } from '../../domain/types'
@@ -9,6 +9,8 @@ type DetailTab = 'details' | 'activity'
 interface TicketDrawerProps {
   readonly ticket: Ticket
   readonly onClose: () => void
+  readonly onEdit: () => void
+  readonly onDelete: () => Promise<void>
 }
 
 // Solo le sezioni con una fonte dati reale nel contratto Ticket. Allegati,
@@ -19,14 +21,28 @@ const tabs = [
   { id: 'activity' as const, label: 'Attività' },
 ]
 
-export function TicketDrawer({ ticket, onClose }: TicketDrawerProps) {
+export function TicketDrawer({ ticket, onClose, onEdit, onDelete }: TicketDrawerProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>('details')
-  const [actionNotice, setActionNotice] = useState('')
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     setActiveTab('details')
-    setActionNotice('')
+    setConfirmingDelete(false)
+    setDeleting(false)
+    setError('')
   }, [ticket.id])
+
+  const handleDelete = () => {
+    setDeleting(true)
+    setError('')
+    void onDelete().catch((reason: unknown) => {
+      setError(reason instanceof Error ? reason.message : 'Eliminazione ticket non riuscita')
+      setDeleting(false)
+      setConfirmingDelete(false)
+    })
+  }
 
   return (
     <aside className="ticket-drawer" aria-label={`Dettaglio ticket ${ticket.id}`}>
@@ -35,14 +51,8 @@ export function TicketDrawer({ ticket, onClose }: TicketDrawerProps) {
         <h2>{ticket.title}</h2>
         <StatusBadge status={ticket.status} />
         <div className="drawer-actions">
-          <button
-            type="button"
-            aria-label="Azioni ticket"
-            onClick={() =>
-              setActionNotice('Azioni ticket non disponibili in questa build: capability non esposta dal BFF.')
-            }
-          >
-            <MoreVertical size={18} aria-hidden="true" />
+          <button type="button" aria-label="Modifica ticket" onClick={onEdit}>
+            <Pencil size={17} aria-hidden="true" />
           </button>
           <button type="button" aria-label="Chiudi dettagli" onClick={onClose}>
             <X size={19} aria-hidden="true" />
@@ -66,32 +76,60 @@ export function TicketDrawer({ ticket, onClose }: TicketDrawerProps) {
         ))}
       </div>
 
-      {actionNotice ? (
-        <p className="drawer-notice" role="status">
-          {actionNotice}
-        </p>
-      ) : null}
-
       <div
         className="drawer-panel"
         role="tabpanel"
         id={`ticket-panel-${activeTab}`}
         aria-labelledby={`ticket-tab-${activeTab}`}
       >
-        {activeTab === 'details' ? <DetailContent ticket={ticket} onNotice={setActionNotice} /> : null}
+        {activeTab === 'details' ? <DetailContent ticket={ticket} /> : null}
         {activeTab === 'activity' ? <TimelineContent ticket={ticket} /> : null}
       </div>
+
+      <footer className="drawer-footer">
+        {error ? (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        {confirmingDelete ? (
+          <div className="drawer-confirm" role="group" aria-label="Conferma eliminazione">
+            <span>Eliminare definitivamente questo ticket?</span>
+            <div className="drawer-confirm-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setConfirmingDelete(false)}
+                disabled={deleting}
+              >
+                Annulla
+              </button>
+              <button
+                className="danger-button"
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+              >
+                {deleting ? 'Eliminazione…' : 'Elimina'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            className="danger-button"
+            type="button"
+            onClick={() => setConfirmingDelete(true)}
+          >
+            <Trash2 size={15} aria-hidden="true" />
+            Elimina ticket
+          </button>
+        )}
+      </footer>
     </aside>
   )
 }
 
-function DetailContent({
-  ticket,
-  onNotice,
-}: {
-  readonly ticket: Ticket
-  readonly onNotice: (notice: string) => void
-}) {
+function DetailContent({ ticket }: { readonly ticket: Ticket }) {
   return (
     <div className="ticket-detail-grid">
       <dl className="ticket-facts">
@@ -123,6 +161,14 @@ function DetailContent({
           <dd>{ticket.description}</dd>
         </div>
         <div>
+          <dt>Assegnatario</dt>
+          <dd>{ticket.assignee ?? 'Non assegnato'}</dd>
+        </div>
+        <div>
+          <dt>Creato da</dt>
+          <dd>{ticket.createdBy}</dd>
+        </div>
+        <div>
           <dt>Creato</dt>
           <dd>{formatUpdatedAt(ticket.createdAt)}</dd>
         </div>
@@ -131,22 +177,6 @@ function DetailContent({
           <dd>{formatUpdatedAt(ticket.updatedAt)}</dd>
         </div>
       </dl>
-
-      <section className="assignment-card" aria-label="Assegnazione ticket">
-        <div>
-          <span>Assegnatario</span>
-          <strong>{ticket.assignee ?? 'Non assegnato'}</strong>
-          <button
-            type="button"
-            onClick={() =>
-              onNotice('Riassegnazione non disponibile: capability non esposta dal BFF.')
-            }
-          >
-            <UserRoundPlus size={14} aria-hidden="true" />
-            Riassegna
-          </button>
-        </div>
-      </section>
     </div>
   )
 }
@@ -166,7 +196,7 @@ function TimelineContent({ ticket }: { readonly ticket: Ticket }) {
         <Check size={15} aria-hidden="true" />
         <span>
           <strong>Ticket creato</strong>
-          {formatUpdatedAt(ticket.createdAt)}
+          {formatUpdatedAt(ticket.createdAt)} · {ticket.createdBy}
         </span>
       </li>
     </ol>

@@ -48,6 +48,7 @@ describe('BFF client', () => {
           assignee: 'Non assegnato',
           service: 'Ordini e-Commerce',
           environment: 'AWS – Primary',
+          createdBy: 'Luca Conti',
           createdAt: '2026-07-22T10:00:00+02:00',
           updatedAt: '2026-07-22T10:00:00+02:00',
         } }),
@@ -70,6 +71,57 @@ describe('BFF client', () => {
     expect(request.credentials).toBe('same-origin')
     expect(headers.get('X-CSRF-Token')).toBe('csrf value')
     expect(headers.has('Authorization')).toBe(false)
+  })
+
+  it('updates a ticket via PATCH with the CSRF header and parses the creator', async () => {
+    document.cookie = '__Host-helios_csrf=csrf%20value; Secure; path=/'
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ data: {
+          id: 'TKT-2025-0578',
+          title: 'Aggiornato',
+          description: 'Descrizione aggiornata',
+          priority: 'medium',
+          status: 'in_progress',
+          assignee: 'Grace Hopper',
+          service: 'Ordini e-Commerce',
+          environment: 'On-prem DR',
+          createdBy: 'Luca Conti',
+          createdAt: '2026-07-22T10:00:00+02:00',
+          updatedAt: '2026-07-22T11:00:00+02:00',
+        } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+
+    const ticket = await createBffClient(config, fetcher).updateTicket('TKT-2025-0578', {
+      title: 'Aggiornato',
+      description: 'Descrizione aggiornata',
+      priority: 'medium',
+      status: 'in_progress',
+      service: 'Ordini e-Commerce',
+      environment: 'On-prem DR',
+      assignee: 'Grace Hopper',
+    })
+
+    const [url, request] = fetcher.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/v1/tickets/TKT-2025-0578')
+    expect(request.method).toBe('PATCH')
+    expect(new Headers(request.headers).get('X-CSRF-Token')).toBe('csrf value')
+    expect(ticket.createdBy).toBe('Luca Conti')
+    expect(ticket.status).toBe('in_progress')
+  })
+
+  it('deletes a ticket via DELETE and tolerates a 204 empty body', async () => {
+    document.cookie = '__Host-helios_csrf=csrf%20value; Secure; path=/'
+    const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+
+    await createBffClient(config, fetcher).deleteTicket('TKT-2025-0578')
+
+    const [url, request] = fetcher.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/v1/tickets/TKT-2025-0578')
+    expect(request.method).toBe('DELETE')
+    expect(new Headers(request.headers).get('X-CSRF-Token')).toBe('csrf value')
   })
 
   it('surfaces the BFF error envelope message instead of only the status code', async () => {

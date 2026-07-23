@@ -39,6 +39,7 @@ const tickets = [
     assignee: 'Luca Conti',
     service: 'Ordini e-Commerce',
     environment: 'AWS – DR (eu-west-1)',
+    createdBy: 'Luca Conti',
     createdAt: '2026-07-22T08:27:00+02:00',
     updatedAt: '2026-07-22T09:42:00+02:00',
   },
@@ -51,6 +52,7 @@ const tickets = [
     assignee: 'Marco Rossi',
     service: 'Identity',
     environment: 'Entra ID',
+    createdBy: 'Giulia Verdi',
     createdAt: '2026-07-22T08:20:00+02:00',
     updatedAt: '2026-07-22T08:55:00+02:00',
   },
@@ -75,7 +77,15 @@ function createGateway(overrides: Partial<HeliosGateway> = {}): HeliosGateway {
       id: 'TKT-2025-0579',
       status: 'open',
       assignee: input.assignee ?? null,
+      createdBy: 'Luca Conti',
     })),
+    updateTicket: vi.fn().mockImplementation(async (id, input) => ({
+      ...(tickets.find((ticket) => ticket.id === id) ?? tickets[0]),
+      ...input,
+      id,
+      assignee: input.assignee ?? null,
+    })),
+    deleteTicket: vi.fn().mockResolvedValue(undefined),
     logout: vi.fn().mockResolvedValue(undefined),
     getLoginUrl: vi.fn().mockReturnValue('/api/v1/auth/login?returnTo=%2F'),
     ...overrides,
@@ -144,6 +154,50 @@ describe('Helios Desk dashboard', () => {
     await waitFor(() => expect(gateway.createTicket).toHaveBeenCalledTimes(1))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.getByRole('row', { name: /Replica RDS non aggiornata/ })).toBeVisible()
+  })
+
+  it('shows the real creator of the ticket in the detail drawer', async () => {
+    const user = userEvent.setup()
+    render(<App gateway={createGateway()} runtimeConfig={runtimeConfig} />)
+    await user.click(await screen.findByRole('row', { name: /TKT-2025-0576/ }))
+
+    const drawer = screen.getByRole('complementary', { name: 'Dettaglio ticket TKT-2025-0576' })
+    expect(within(drawer).getByText('Creato da')).toBeVisible()
+    expect(within(drawer).getByText('Giulia Verdi')).toBeVisible()
+  })
+
+  it('edits a ticket status through the edit dialog', async () => {
+    const user = userEvent.setup()
+    const gateway = createGateway()
+    render(<App gateway={gateway} runtimeConfig={runtimeConfig} />)
+    await user.click(await screen.findByRole('row', { name: /TKT-2025-0576/ }))
+
+    const drawer = screen.getByRole('complementary', { name: 'Dettaglio ticket TKT-2025-0576' })
+    await user.click(within(drawer).getByRole('button', { name: 'Modifica ticket' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Modifica ticket' })
+    await user.selectOptions(within(dialog).getByLabelText('Stato'), 'closed')
+    await user.click(within(dialog).getByRole('button', { name: 'Salva modifiche' }))
+
+    await waitFor(() => expect(gateway.updateTicket).toHaveBeenCalledTimes(1))
+    expect(gateway.updateTicket).toHaveBeenCalledWith(
+      'TKT-2025-0576',
+      expect.objectContaining({ status: 'closed' }),
+    )
+  })
+
+  it('deletes a ticket after confirmation and removes it from the table', async () => {
+    const user = userEvent.setup()
+    const gateway = createGateway()
+    render(<App gateway={gateway} runtimeConfig={runtimeConfig} />)
+    await user.click(await screen.findByRole('row', { name: /TKT-2025-0576/ }))
+
+    const drawer = screen.getByRole('complementary', { name: 'Dettaglio ticket TKT-2025-0576' })
+    await user.click(within(drawer).getByRole('button', { name: 'Elimina ticket' }))
+    await user.click(within(drawer).getByRole('button', { name: 'Elimina' }))
+
+    await waitFor(() => expect(gateway.deleteTicket).toHaveBeenCalledWith('TKT-2025-0576'))
+    expect(screen.queryByRole('row', { name: /TKT-2025-0576/ })).not.toBeInTheDocument()
   })
 
   it('shows the BFF login action without loading protected resources', async () => {

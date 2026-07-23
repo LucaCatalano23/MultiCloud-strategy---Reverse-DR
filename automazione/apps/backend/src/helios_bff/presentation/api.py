@@ -18,7 +18,7 @@ from helios_bff.application.auth_service import (
 from helios_bff.application.ports import PlatformProbe, TicketClient
 from helios_bff.infrastructure.service_clients import UpstreamServiceError, UpstreamStatusError
 from helios_shared.http import ApiProblem, install_error_handlers
-from helios_ticket_service.domain.models import TicketPriority
+from helios_ticket_service.domain.models import TicketPriority, TicketStatus
 
 
 logger = logging.getLogger(__name__)
@@ -72,11 +72,23 @@ class BffSite:
 
 
 class CreateTicketProxyRequest(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", str_strip_whitespace=True)
 
     title: str = Field(min_length=3, max_length=160)
     description: str = Field(min_length=1, max_length=4000)
     priority: TicketPriority
+    service: str = Field(min_length=1, max_length=120)
+    environment: str = Field(min_length=1, max_length=80)
+    assignee: str | None = Field(default=None, min_length=1, max_length=255)
+
+
+class UpdateTicketProxyRequest(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid", str_strip_whitespace=True)
+
+    title: str = Field(min_length=3, max_length=160)
+    description: str = Field(min_length=1, max_length=4000)
+    priority: TicketPriority
+    status: TicketStatus
     service: str = Field(min_length=1, max_length=120)
     environment: str = Field(min_length=1, max_length=80)
     assignee: str | None = Field(default=None, min_length=1, max_length=255)
@@ -224,6 +236,26 @@ def create_app(
     ) -> dict[str, Any]:
         access_token = await _session_access_token(auth, request)
         return await tickets.create_ticket(access_token, payload.model_dump(mode="json"))
+
+    @app.get("/api/v1/tickets/{ticket_id}")
+    async def get_ticket(request: Request, ticket_id: str) -> dict[str, Any]:
+        access_token = await _session_access_token(auth, request)
+        return await tickets.get_ticket(access_token, ticket_id)
+
+    @app.patch("/api/v1/tickets/{ticket_id}")
+    async def update_ticket(
+        request: Request, ticket_id: str, payload: UpdateTicketProxyRequest
+    ) -> dict[str, Any]:
+        access_token = await _session_access_token(auth, request)
+        return await tickets.update_ticket(
+            access_token, ticket_id, payload.model_dump(mode="json")
+        )
+
+    @app.delete("/api/v1/tickets/{ticket_id}", status_code=204, response_class=Response)
+    async def delete_ticket(request: Request, ticket_id: str) -> Response:
+        access_token = await _session_access_token(auth, request)
+        await tickets.delete_ticket(access_token, ticket_id)
+        return Response(status_code=204)
 
     @app.get("/api/v1/platform/status")
     async def platform_status() -> dict[str, Any]:

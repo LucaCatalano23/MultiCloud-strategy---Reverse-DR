@@ -61,6 +61,7 @@ function parseTicket(value: unknown): Ticket {
         : stringField(value, 'assignee'),
     service: stringField(value, 'service'),
     environment: stringField(value, 'environment'),
+    createdBy: stringField(value, 'createdBy'),
     createdAt: stringField(value, 'createdAt'),
     updatedAt: stringField(value, 'updatedAt'),
   }
@@ -231,6 +232,18 @@ export function createBffClient(
         method: 'POST',
         body: JSON.stringify(input),
       }),
+    updateTicket: (id, input) =>
+      request(`/tickets/${encodeURIComponent(id)}`, (value) => {
+        if (!isRecord(value) || !('data' in value)) {
+          throw new Error('Envelope aggiornamento ticket non valido')
+        }
+        return parseTicket(value.data)
+      }, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      }),
+    deleteTicket: (id) =>
+      request(`/tickets/${encodeURIComponent(id)}`, () => undefined, { method: 'DELETE' }),
     logout: () => request('/auth/logout', () => undefined, { method: 'POST' }),
     getLoginUrl: (returnTo) => {
       if (!returnTo.startsWith('/') || returnTo.startsWith('//') || returnTo.includes('\\')) {

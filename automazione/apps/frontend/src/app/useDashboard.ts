@@ -4,6 +4,7 @@ import type {
   PlatformStatus,
   SessionInfo,
   Ticket,
+  UpdateTicketInput,
 } from '../domain/types'
 import type { HeliosGateway } from '../infrastructure/types'
 
@@ -70,5 +71,35 @@ export function useDashboard(gateway: HeliosGateway) {
     [gateway],
   )
 
-  return { state, reload: load, createTicket }
+  const updateTicket = useCallback(
+    async (id: string, input: UpdateTicketInput) => {
+      const updated = await gateway.updateTicket(id, input)
+      setState((current) =>
+        current.phase === 'ready'
+          ? {
+              ...current,
+              tickets: current.tickets.map((ticket) =>
+                ticket.id === updated.id ? updated : ticket,
+              ),
+            }
+          : current,
+      )
+      return updated
+    },
+    [gateway],
+  )
+
+  const deleteTicket = useCallback(
+    async (id: string) => {
+      await gateway.deleteTicket(id)
+      setState((current) =>
+        current.phase === 'ready'
+          ? { ...current, tickets: current.tickets.filter((ticket) => ticket.id !== id) }
+          : current,
+      )
+    },
+    [gateway],
+  )
+
+  return { state, reload: load, createTicket, updateTicket, deleteTicket }
 }

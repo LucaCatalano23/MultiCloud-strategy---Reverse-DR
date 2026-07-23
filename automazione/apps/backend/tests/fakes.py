@@ -49,6 +49,13 @@ class InMemoryTicketRepository:
         self.events.extend(events)
         return ticket
 
+    async def delete(self, ticket_id: UUID, events: tuple[EventEnvelope, ...]) -> bool:
+        if ticket_id not in self.tickets:
+            return False
+        del self.tickets[ticket_id]
+        self.events.extend(events)
+        return True
+
     async def ping(self) -> bool:
         return self.available
 
