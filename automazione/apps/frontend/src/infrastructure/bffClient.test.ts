@@ -1,0 +1,81 @@
+import { describe, expect, it, vi } from 'vitest'
+import { createBffClient } from './bffClient'
+import type { RuntimeConfig } from './runtimeConfig'
+
+const config: RuntimeConfig = {
+  appName: 'Helios Desk',
+  apiBasePath: '/api/v1',
+  demoMode: false,
+  csrfCookieName: '__Host-helios_csrf',
+  csrfHeaderName: 'X-CSRF-Token',
+}
+
+describe('BFF client', () => {
+  it('requests the session with same-origin cookies and no bearer token', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          authenticated: false,
+          user: null,
+          site: {
+            mode: 'primary',
+            identityProvider: 'entra-id',
+            name: 'Primario',
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+
+    await createBffClient(config, fetcher).getSession()
+
+    const [url, request] = fetcher.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/v1/session')
+    expect(request.credentials).toBe('same-origin')
+    expect(new Headers(request.headers).has('Authorization')).toBe(false)
+  })
+
+  it('adds the double-submit CSRF header to mutations', async () => {
+    document.cookie = '__Host-helios_csrf=csrf%20value; Secure; path=/'
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ data: {
+          id: 'TKT-2025-0579',
+          title: 'Nuovo ticket',
+          description: 'Descrizione completa',
+          priority: 'high',
+          status: 'open',
+          assignee: 'Non assegnato',
+          service: 'Ordini e-Commerce',
+          environment: 'AWS – Primary',
+          createdAt: '2026-07-22T10:00:00+02:00',
+          updatedAt: '2026-07-22T10:00:00+02:00',
+        } }),
+        { status: 201, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+
+    await createBffClient(config, fetcher).createTicket({
+      title: 'Nuovo ticket',
+      description: 'Descrizione completa',
+      priority: 'high',
+      service: 'Ordini e-Commerce',
+      environment: 'AWS – Primary',
+    })
+
+    const [url, request] = fetcher.mock.calls[0] as [string, RequestInit]
+    const headers = new Headers(request.headers)
+    expect(url).toBe('/api/v1/tickets')
+    expect(request.method).toBe('POST')
+    expect(request.credentials).toBe('same-origin')
+    expect(headers.get('X-CSRF-Token')).toBe('csrf value')
+    expect(headers.has('Authorization')).toBe(false)
+  })
+
+  it('builds a relative login URL with a constrained return target', () => {
+    const client = createBffClient(config, vi.fn())
+
+    expect(client.getLoginUrl('/')).toBe('/api/v1/auth/login?returnTo=%2F')
+    expect(() => client.getLoginUrl('https://evil.example')).toThrow(/returnTo/)
+  })
+})

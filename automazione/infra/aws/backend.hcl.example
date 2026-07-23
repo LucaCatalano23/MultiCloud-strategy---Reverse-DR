@@ -1,0 +1,5 @@
+bucket         = "replace-with-precreated-terraform-state-bucket"
+key            = "reverse-dr/poc/aws.tfstate"
+region         = "eu-west-1"
+encrypt        = true
+use_lockfile   = true

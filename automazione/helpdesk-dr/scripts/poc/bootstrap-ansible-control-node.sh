@@ -55,6 +55,9 @@ exec_ansible lxc list --format compact >/dev/null
 
 localstack_url="$(discover_localstack_endpoint exec_ansible)"
 exec_ansible install -d -m 0750 /etc/helpdesk-dr
+lxc_retry file push "${HELPDESK_DR_CONFIG_PATH}" \
+  "${ANSIBLE_NODE_NAME}/etc/helpdesk-dr/config.env" \
+  --mode=0600 --uid=0 --gid=0
 exec_ansible bash -lc "printf '%s\\n' '${localstack_url}' >/etc/helpdesk-dr/localstack.endpoint && chmod 0600 /etc/helpdesk-dr/localstack.endpoint"
 
 exec_ansible bash -lc "rm -rf ${CONTROL_DIR} && git clone ${APP_REPOSITORY_URL} ${CONTROL_DIR}"
@@ -63,6 +66,8 @@ exec_ansible bash -lc "
   test -f ${CONTROL_DIR}/ansible/ansible.cfg
   test -f ${CONTROL_DIR}/ansible/inventory.ini
   test -f ${CONTROL_DIR}/ansible/playbooks/failover.yml
+  test -f ${CONTROL_DIR}/infra/onprem/kustomization.yaml
+  test -f ${CONTROL_DIR}/contracts/deployment-contract.json
   cd ${CONTROL_DIR}
   ANSIBLE_CONFIG=ansible/ansible.cfg ansible-playbook \
     -i ansible/inventory.ini \

@@ -1,0 +1,14 @@
+clusterName: reverse-dr-poc
+region: eu-west-1
+vpcId: REPLACE_VPC_ID
+replicaCount: 1
+serviceAccount:
+  create: false
+  name: aws-load-balancer-controller
+enableShield: false
+enableWaf: false
+enableWafv2: false
+defaultTags:
+  Project: reverse-dr
+  Environment: poc
+  ManagedBy: aws-load-balancer-controller

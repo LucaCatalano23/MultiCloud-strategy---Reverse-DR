@@ -1,0 +1,55 @@
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: IngressClassParams
+metadata:
+  name: helios-public-alb
+spec:
+  scheme: internet-facing
+  ipAddressType: ipv4
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: helios-desk
+---
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: helios-public-alb
+spec:
+  controller: ingress.k8s.aws/alb
+  parameters:
+    apiGroup: elbv2.k8s.aws
+    kind: IngressClassParams
+    name: helios-public-alb
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: helios-public
+  namespace: helios-desk
+  annotations:
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/certificate-arn: REPLACE_ACM_CERTIFICATE_ARN
+    alb.ingress.kubernetes.io/ip-address-type: ipv4
+    alb.ingress.kubernetes.io/load-balancer-attributes: routing.http.drop_invalid_header_fields.enabled=true,idle_timeout.timeout_seconds=60
+    alb.ingress.kubernetes.io/tags: Project=reverse-dr,Environment=poc,ManagedBy=aws-load-balancer-controller
+spec:
+  ingressClassName: helios-public-alb
+  rules:
+    - host: REPLACE_APP_HOSTNAME
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: helios-bff
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: helios-web
+                port:
+                  number: 8080

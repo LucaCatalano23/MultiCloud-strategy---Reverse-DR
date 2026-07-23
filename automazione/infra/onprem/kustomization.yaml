@@ -1,0 +1,58 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespaces.yaml
+  - identity/postgres.yaml
+  - identity/keycloak.yaml
+  - identity/ingress.yaml
+  - identity/network-policies.yaml
+  - application/workloads.yaml
+  - application/ingress.yaml
+  - application/network-policies.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    app.kubernetes.io/part-of: helios-desk
+    app.kubernetes.io/managed-by: kustomize
+
+configMapGenerator:
+  - name: keycloak-realm-import
+    namespace: helios-identity
+    files:
+      - helios-desk-realm.json=keycloak/realm/helios-desk-realm.json
+  - name: helios-identity-provisioner
+    namespace: helios-identity
+    files:
+      - provision-dr-operator.sh=keycloak/provision/provision-dr-operator.sh
+  - name: helios-identity-config
+    namespace: helios-identity
+    literals:
+      - HELIOS_API_AUDIENCE=api://reverse-dr-helpdesk
+  - name: helios-onprem-config
+    namespace: helios-desk
+    literals:
+      - DR_ACTIVE=false
+      - SITE_MODE=dr
+      - SITE_NAME=on-prem
+      - IDENTITY_PROVIDER=keycloak
+      - OIDC_ISSUER_URL=https://auth.azienda.lan/realms/helios-desk
+      - OIDC_AUDIENCE=api://reverse-dr-helpdesk
+      - OIDC_JWKS_URL=http://keycloak.helios-identity.svc.cluster.local:8080/realms/helios-desk/protocol/openid-connect/certs
+      - OIDC_ROLES_CLAIM=roles
+      - OIDC_REQUIRED_ALGORITHMS=RS256
+      - OIDC_CLIENT_ID=helios-bff
+      - OIDC_REDIRECT_URI=https://helpdesk.azienda.lan/api/v1/auth/callback
+      - OIDC_POST_LOGOUT_REDIRECT_URI=https://helpdesk.azienda.lan/
+      - OIDC_AUTHORIZATION_ENDPOINT=https://auth.azienda.lan/realms/helios-desk/protocol/openid-connect/auth
+      - OIDC_TOKEN_ENDPOINT=http://keycloak.helios-identity.svc.cluster.local:8080/realms/helios-desk/protocol/openid-connect/token
+      - OIDC_END_SESSION_ENDPOINT=https://auth.azienda.lan/realms/helios-desk/protocol/openid-connect/logout
+      - TICKET_SERVICE_URL=http://helios-ticket-service.helios-desk.svc.cluster.local:8001
+      - AUTOMATION_SERVICE_URL=http://helios-automation-service.helios-desk.svc.cluster.local:8002
+      - AUTOMATION_MODE=lambda-dr
+      - LAMBDA_DR_BASE_URL=http://event-adapter.lambda-dr.svc.cluster.local:8080
+  - name: helios-web-runtime
+    namespace: helios-desk
+    files:
+      - runtime-config.json=application/runtime-config.json

@@ -79,9 +79,17 @@ spec:
             - name: AWS_REGION
               value: eu-west-1
             - name: AWS_ACCESS_KEY_ID
-              value: test
+              valueFrom:
+                secretKeyRef:
+                  name: helpdesk-aws
+                  key: AWS_ACCESS_KEY_ID
+                  optional: true
             - name: AWS_SECRET_ACCESS_KEY
-              value: test
+              valueFrom:
+                secretKeyRef:
+                  name: helpdesk-aws
+                  key: AWS_SECRET_ACCESS_KEY
+                  optional: true
             - name: LAMBDA_DR_BASE_URL
               valueFrom:
                 configMapKeyRef:

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: helios-identity
+  labels:
+    app.kubernetes.io/part-of: helios-desk
+    app.kubernetes.io/component: identity
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: helios-desk
+  labels:
+    app.kubernetes.io/part-of: helios-desk
+    app.kubernetes.io/component: application
+

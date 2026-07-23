@@ -5,6 +5,18 @@
   any_errors_fatal: true
   vars:
     project_root: /opt/helpdesk-dr
+    helios_dr_namespace: helios-desk
+    helios_identity_namespace: helios-identity
+    helios_dr_workloads:
+      - helios-ticket-service
+      - helios-automation-service
+      - helios-bff
+      - helios-web
+    helios_dr_active_replicas: 1
+    helios_dr_standby_replicas: 0
+    helios_keycloak_issuer: https://auth.azienda.lan/realms/helios-desk
+    helios_keycloak_audience: api://reverse-dr-helpdesk
+    helios_keycloak_jwks_url: http://keycloak.helios-identity.svc.cluster.local:8080/realms/helios-desk/protocol/openid-connect/certs
 
   pre_tasks:
     - name: Enforce the dedicated DR coordinator
@@ -49,6 +61,22 @@
             chdir: "{{ project_root }}"
           changed_when: false
 
+        - name: Promote on-prem workloads with Keycloak and switch authoritative DNS
+          ansible.builtin.command:
+            argv:
+              - bash
+              - scripts/failover/promote-onprem.sh
+            chdir: "{{ project_root }}"
+          environment:
+            HELIOS_DR_NAMESPACE: "{{ helios_dr_namespace }}"
+            HELIOS_IDENTITY_NAMESPACE: "{{ helios_identity_namespace }}"
+            HELIOS_DR_WORKLOADS: "{{ helios_dr_workloads | join(' ') }}"
+            HELIOS_DR_ACTIVE_REPLICAS: "{{ helios_dr_active_replicas | string }}"
+            HELIOS_KEYCLOAK_ISSUER: "{{ helios_keycloak_issuer }}"
+            HELIOS_KEYCLOAK_AUDIENCE: "{{ helios_keycloak_audience }}"
+            HELIOS_KEYCLOAK_JWKS_URL: "{{ helios_keycloak_jwks_url }}"
+          changed_when: true
+
       rescue:
         - name: Keep the on-prem application non-ready after a failed preflight
           ansible.builtin.command:
@@ -56,18 +84,13 @@
               - bash
               - scripts/failover/demote-onprem.sh
             chdir: "{{ project_root }}"
+          environment:
+            HELIOS_DR_NAMESPACE: "{{ helios_dr_namespace }}"
+            HELIOS_DR_WORKLOADS: "{{ helios_dr_workloads | join(' ') }}"
+            HELIOS_DR_STANDBY_REPLICAS: "{{ helios_dr_standby_replicas | string }}"
           changed_when: true
           failed_when: false
 
         - name: Stop because the DR candidate is not safe to promote
           ansible.builtin.fail:
-            msg: "Restore or Lambda DR validation failed; DNS was not switched."
-
-    - name: Promote on-prem and switch authoritative DNS
-      ansible.builtin.command:
-        argv:
-          - bash
-          - scripts/failover/promote-onprem.sh
-        chdir: "{{ project_root }}"
-      changed_when: true
-
+            msg: "Restore, identity preflight, or workload promotion failed; DNS was not switched."

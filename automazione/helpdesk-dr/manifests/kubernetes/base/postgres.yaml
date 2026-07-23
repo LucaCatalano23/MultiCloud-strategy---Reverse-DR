@@ -1,15 +1,4 @@
 apiVersion: v1
-kind: Secret
-metadata:
-  name: helpdesk-postgres
-  namespace: helpdesk
-type: Opaque
-stringData:
-  POSTGRES_DB: helpdesk
-  POSTGRES_USER: helpdesk
-  POSTGRES_PASSWORD: helpdesk-password
----
-apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: postgres-data
@@ -49,7 +38,10 @@ spec:
               mountPath: /var/lib/postgresql/data
           readinessProbe:
             exec:
-              command: ["pg_isready", "-U", "helpdesk"]
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
             initialDelaySeconds: 8
             periodSeconds: 5
       volumes:
@@ -68,4 +60,3 @@ spec:
   ports:
     - port: 5432
       targetPort: 5432
-

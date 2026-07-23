@@ -1,0 +1,552 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: helios-ticket-service
+  namespace: helios-desk
+  labels:
+    app.kubernetes.io/name: helios-ticket-service
+    app.kubernetes.io/component: ticket-api
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: helios-ticket-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: helios-ticket-service
+        app.kubernetes.io/component: ticket-api
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ticket-service
+          image: helios-ticket-service:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8001
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: helios-app-database
+                  key: DATABASE_URL
+            - name: DR_ACTIVE
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: DR_ACTIVE
+            - name: OIDC_ISSUER_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_ISSUER_URL
+            - name: OIDC_AUDIENCE
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_AUDIENCE
+            - name: OIDC_JWKS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_JWKS_URL
+            - name: OIDC_ROLES_CLAIM
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_ROLES_CLAIM
+            - name: OIDC_REQUIRED_ALGORITHMS
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_REQUIRED_ALGORITHMS
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 3
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: helios-ticket-service
+  namespace: helios-desk
+  labels:
+    app.kubernetes.io/name: helios-ticket-service
+spec:
+  selector:
+    app.kubernetes.io/name: helios-ticket-service
+  ports:
+    - name: http
+      port: 8001
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: helios-automation-service
+  namespace: helios-desk
+  labels:
+    app.kubernetes.io/name: helios-automation-service
+    app.kubernetes.io/component: automation-api
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: helios-automation-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: helios-automation-service
+        app.kubernetes.io/component: automation-api
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: automation-service
+          image: helios-automation-service:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8002
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: helios-app-database
+                  key: DATABASE_URL
+            - name: AUTOMATION_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: AUTOMATION_MODE
+            - name: LAMBDA_DR_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: LAMBDA_DR_BASE_URL
+            - name: DR_ACTIVE
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: DR_ACTIVE
+            - name: OIDC_ISSUER_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_ISSUER_URL
+            - name: OIDC_AUDIENCE
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_AUDIENCE
+            - name: OIDC_JWKS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_JWKS_URL
+            - name: OIDC_ROLES_CLAIM
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_ROLES_CLAIM
+            - name: OIDC_REQUIRED_ALGORITHMS
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_REQUIRED_ALGORITHMS
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 3
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: helios-automation-service
+  namespace: helios-desk
+  labels:
+    app.kubernetes.io/name: helios-automation-service
+spec:
+  selector:
+    app.kubernetes.io/name: helios-automation-service
+  ports:
+    - name: http
+      port: 8002
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: helios-bff
+  namespace: helios-desk
+  labels:
+    app.kubernetes.io/name: helios-bff
+    app.kubernetes.io/component: bff
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: helios-bff
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: helios-bff
+        app.kubernetes.io/component: bff
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: bff
+          image: helios-bff:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: helios-app-database
+                  key: DATABASE_URL
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: helios-bff-runtime
+                  key: OIDC_CLIENT_SECRET
+            - name: SESSION_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: helios-bff-runtime
+                  key: SESSION_ENCRYPTION_KEY
+            - name: DR_ACTIVE
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: DR_ACTIVE
+            - name: SITE_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: SITE_MODE
+            - name: SITE_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: SITE_NAME
+            - name: IDENTITY_PROVIDER
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: IDENTITY_PROVIDER
+            - name: OIDC_ISSUER_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_ISSUER_URL
+            - name: OIDC_AUDIENCE
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_AUDIENCE
+            - name: OIDC_JWKS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_JWKS_URL
+            - name: OIDC_ROLES_CLAIM
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_ROLES_CLAIM
+            - name: OIDC_REQUIRED_ALGORITHMS
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_REQUIRED_ALGORITHMS
+            - name: OIDC_CLIENT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_CLIENT_ID
+            - name: OIDC_REDIRECT_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_REDIRECT_URI
+            - name: OIDC_POST_LOGOUT_REDIRECT_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_POST_LOGOUT_REDIRECT_URI
+            - name: OIDC_AUTHORIZATION_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_AUTHORIZATION_ENDPOINT
+            - name: OIDC_TOKEN_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_TOKEN_ENDPOINT
+            - name: OIDC_END_SESSION_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_END_SESSION_ENDPOINT
+            - name: TICKET_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: TICKET_SERVICE_URL
+            - name: AUTOMATION_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: AUTOMATION_SERVICE_URL
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 3
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: 75m
+              memory: 128Mi
+            limits:
+              cpu: 750m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: helios-bff
+  namespace: helios-desk
+  labels:
+    app.kubernetes.io/name: helios-bff
+spec:
+  selector:
+    app.kubernetes.io/name: helios-bff
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: helios-web
+  namespace: helios-desk
+  labels:
+    app.kubernetes.io/name: helios-web
+    app.kubernetes.io/component: web
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: helios-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: helios-web
+        app.kubernetes.io/component: web
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: reverse-dr/helios-desk-frontend:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 3
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: runtime-config
+              mountPath: /usr/share/nginx/html/config/runtime-config.json
+              subPath: runtime-config.json
+              readOnly: true
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: runtime-config
+          configMap:
+            name: helios-web-runtime
+        - name: nginx-cache
+          emptyDir:
+            sizeLimit: 32Mi
+        - name: nginx-run
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Mi
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: helios-web
+  namespace: helios-desk
+  labels:
+    app.kubernetes.io/name: helios-web
+spec:
+  selector:
+    app.kubernetes.io/name: helios-web
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

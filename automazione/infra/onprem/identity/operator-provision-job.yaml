@@ -1,0 +1,90 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: helios-dr-operator-provisioner
+  namespace: helios-identity
+  labels:
+    app.kubernetes.io/name: helios-identity-provisioner
+    app.kubernetes.io/component: identity-bootstrap
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: helios-identity-provisioner
+        app.kubernetes.io/component: identity-bootstrap
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: provisioner
+          image: quay.io/keycloak/keycloak:26.7.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - /opt/helios/provision-dr-operator.sh
+          env:
+            - name: KEYCLOAK_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-bootstrap-admin
+                  key: username
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-bootstrap-admin
+                  key: password
+            - name: HELIOS_DR_OPERATOR_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: helios-dr-operator
+                  key: username
+            - name: HELIOS_DR_OPERATOR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: helios-dr-operator
+                  key: password
+            - name: HELIOS_DR_OPERATOR_EMPLOYEE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: helios-dr-operator
+                  key: employee_id
+            - name: HELIOS_DR_OPERATOR_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: helios-dr-operator
+                  key: email
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: provisioner
+              mountPath: /opt/helios/provision-dr-operator.sh
+              subPath: provision-dr-operator.sh
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: provisioner
+          configMap:
+            name: helios-identity-provisioner
+            defaultMode: 360
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Mi

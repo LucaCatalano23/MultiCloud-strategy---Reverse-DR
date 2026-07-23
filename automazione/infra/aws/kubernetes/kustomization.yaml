@@ -1,0 +1,34 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - service-accounts.yaml
+  - configmap.yaml
+  - external-secrets.yaml
+  - workloads.yaml
+  - ingress.yaml
+  - backup-cronjob.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: helios-desk
+      app.kubernetes.io/managed-by: kustomize
+    includeSelectors: false
+
+images:
+  - name: helios-web
+    newName: REPLACE_FRONTEND_ECR_REPOSITORY
+    newTag: REPLACE_IMAGE_TAG
+  - name: helios-bff
+    newName: REPLACE_BFF_ECR_REPOSITORY
+    newTag: REPLACE_IMAGE_TAG
+  - name: helios-ticket-service
+    newName: REPLACE_TICKET_ECR_REPOSITORY
+    newTag: REPLACE_IMAGE_TAG
+  - name: helios-automation-service
+    newName: REPLACE_AUTOMATION_ECR_REPOSITORY
+    newTag: REPLACE_IMAGE_TAG
+  - name: helios-postgres-backup
+    newName: REPLACE_AUTOMATION_ECR_REPOSITORY
+    newTag: REPLACE_BACKUP_IMAGE_TAG

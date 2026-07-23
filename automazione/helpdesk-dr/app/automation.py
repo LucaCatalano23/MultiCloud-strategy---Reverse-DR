@@ -39,17 +39,29 @@ class AwsLambdaGateway:
         self._function_name = os.environ.get(
             "HELPDESK_LAMBDA_FUNCTION_NAME", "helpdesk-ticket-processor"
         )
+        access_key = os.environ.get("AWS_ACCESS_KEY_ID")
+        secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
+        if bool(access_key) != bool(secret_key):
+            raise RuntimeError(
+                "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be supplied together"
+            )
+        credentials = {}
+        if access_key and secret_key:
+            credentials = {
+                "aws_access_key_id": access_key,
+                "aws_secret_access_key": secret_key,
+            }
+
         self._client = boto3.client(
             "lambda",
             endpoint_url=endpoint_url,
             region_name=os.environ.get("AWS_REGION", "eu-west-1"),
-            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", "test"),
-            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", "test"),
             config=Config(
                 connect_timeout=2,
                 read_timeout=10,
                 retries={"max_attempts": 2, "mode": "standard"},
             ),
+            **credentials,
         )
 
     @property
@@ -121,4 +133,3 @@ def build_automation_gateway() -> AutomationGateway:
     if mode == "lambda-dr":
         return LambdaDrGateway()
     raise RuntimeError(f"Unsupported AUTOMATION_MODE={mode}")
-

@@ -1,0 +1,7 @@
+{
+  "appName": "Helios Desk",
+  "apiBasePath": "${HELIOS_API_BASE_PATH}",
+  "demoMode": ${HELIOS_DEMO_MODE},
+  "csrfCookieName": "${HELIOS_CSRF_COOKIE_NAME}",
+  "csrfHeaderName": "${HELIOS_CSRF_HEADER_NAME}"
+}

@@ -1,0 +1,1 @@
+"""Automation use cases."""

@@ -1,0 +1,164 @@
+{
+  "realm": "helios-desk",
+  "enabled": true,
+  "displayName": "Helios Desk DR",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": false,
+  "rememberMe": false,
+  "verifyEmail": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 5,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "maxDeltaTimeSeconds": 43200,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 28800,
+  "offlineSessionMaxLifespanEnabled": true,
+  "offlineSessionMaxLifespan": 86400,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "defaultSignatureAlgorithm": "RS256",
+  "roles": {
+    "client": {
+      "helios-api": [
+        {
+          "name": "tickets.read",
+          "description": "Read helpdesk tickets",
+          "composite": false,
+          "clientRole": true
+        },
+        {
+          "name": "tickets.write",
+          "description": "Create and update helpdesk tickets",
+          "composite": false,
+          "clientRole": true
+        },
+        {
+          "name": "automation.execute",
+          "description": "Execute approved ticket automations",
+          "composite": false,
+          "clientRole": true
+        }
+      ]
+    }
+  },
+  "clientScopeMappings": {
+    "helios-bff": [
+      {
+        "client": "helios-api",
+        "roles": [
+          "tickets.read",
+          "tickets.write",
+          "automation.execute"
+        ]
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "helios-api",
+      "name": "Helios Desk API",
+      "description": "Resource server roles; the token audience is supplied separately from the Entra application client ID.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "bearerOnly": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false
+    },
+    {
+      "clientId": "helios-bff",
+      "name": "Helios Desk BFF",
+      "description": "Confidential OAuth client; tokens remain server-side in the BFF.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${HELIOS_BFF_CLIENT_SECRET}",
+      "bearerOnly": false,
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false,
+      "frontchannelLogout": true,
+      "redirectUris": [
+        "https://helpdesk.azienda.lan/api/v1/auth/callback"
+      ],
+      "webOrigins": [
+        "https://helpdesk.azienda.lan"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://helpdesk.azienda.lan/",
+        "use.refresh.tokens": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "${HELIOS_API_AUDIENCE}",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "usermodel.clientRoleMapping.clientId": "helios-api",
+            "usermodel.clientRoleMapping.rolePrefix": "",
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "employee-id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "employee_id",
+            "claim.name": "employee_id",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "defaultDefaultClientScopes": [
+    "profile",
+    "email",
+    "roles",
+    "web-origins",
+    "acr"
+  ],
+  "defaultOptionalClientScopes": [
+    "address",
+    "phone",
+    "offline_access",
+    "microprofile-jwt"
+  ]
+}

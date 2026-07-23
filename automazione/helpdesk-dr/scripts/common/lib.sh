@@ -3,8 +3,47 @@ set -euo pipefail
 
 HELPDESK_DR_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${HELPDESK_DR_LIB_DIR}/../.." && pwd)"
-# shellcheck source=../../config.env
-source "${ROOT_DIR}/config.env"
+# shellcheck source=../../config.defaults
+source "${ROOT_DIR}/config.defaults"
+
+HELPDESK_DR_CONFIG_PATH="${HELPDESK_DR_CONFIG_FILE:-${ROOT_DIR}/config.env}"
+if [ ! -f "${HELPDESK_DR_CONFIG_PATH}" ] && [ -f /etc/helpdesk-dr/config.env ]; then
+  HELPDESK_DR_CONFIG_PATH="/etc/helpdesk-dr/config.env"
+fi
+if [ ! -f "${HELPDESK_DR_CONFIG_PATH}" ]; then
+  echo "Missing DR secrets file: ${HELPDESK_DR_CONFIG_PATH}" >&2
+  echo "Copy config.env.example to config.env and provide local-only secrets." >&2
+  exit 1
+fi
+# shellcheck disable=SC1090
+source "${HELPDESK_DR_CONFIG_PATH}"
+
+: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be supplied by the DR secrets file}"
+
+apply_helpdesk_runtime_secrets() {
+  local executor="$1"
+
+  "${executor}" kubectl get namespace "${APP_NAMESPACE}" >/dev/null 2>&1 || \
+    "${executor}" kubectl create namespace "${APP_NAMESPACE}"
+  "${executor}" sh -c '
+    set -eu
+    kubectl -n "$1" create secret generic helpdesk-postgres \
+      --from-literal=POSTGRES_DB="$2" \
+      --from-literal=POSTGRES_USER="$3" \
+      --from-literal=POSTGRES_PASSWORD="$4" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  ' sh "${APP_NAMESPACE}" "${POSTGRES_DB}" "${POSTGRES_USER}" "${POSTGRES_PASSWORD}"
+
+  if [ -n "${AWS_ACCESS_KEY_ID:-}" ] && [ -n "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+    "${executor}" sh -c '
+      set -eu
+      kubectl -n "$1" create secret generic helpdesk-aws \
+        --from-literal=AWS_ACCESS_KEY_ID="$2" \
+        --from-literal=AWS_SECRET_ACCESS_KEY="$3" \
+        --dry-run=client -o yaml | kubectl apply -f -
+    ' sh "${APP_NAMESPACE}" "${AWS_ACCESS_KEY_ID}" "${AWS_SECRET_ACCESS_KEY}"
+  fi
+}
 
 lxc_retry() {
   local attempt
@@ -335,6 +374,7 @@ render_dns_zone() {
 @ IN NS server-dns.${LAB_DOMAIN}.
 server-dns IN A ${DNS_SERVER_IP}
 helpdesk IN A ${target_ip}
+auth IN A ${ONPREM_K3S_IP}
 git-server IN A ${GIT_SERVER_IP}
 cloud-helpdesk IN A ${CLOUD_K3S_IP}
 onprem-helpdesk IN A ${ONPREM_K3S_IP}
@@ -362,6 +402,13 @@ cloud_ready() {
 }
 
 onprem_ready() {
+  local helios_namespace="${HELIOS_DR_NAMESPACE:-helios-desk}"
+  if exec_onprem kubectl -n "${helios_namespace}" get deployment/helios-bff >/dev/null 2>&1; then
+    exec_onprem kubectl get --raw \
+      "/api/v1/namespaces/${helios_namespace}/services/http:helios-bff:http/proxy/health/ready" \
+      >/dev/null
+    return
+  fi
   exec_onprem curl -fsS -H "Host: ${HELPDESK_FQDN}" "http://127.0.0.1/health/ready" >/dev/null
 }
 

@@ -7,6 +7,7 @@ source "${SCRIPT_DIR}/../common/lib.sh"
 
 wait_for_k3s "${CLOUD_K3S_NAME}" exec_cloud
 copy_to_container "${CLOUD_K3S_NAME}" "${ROOT_DIR}" "/tmp/helpdesk-dr"
+apply_helpdesk_runtime_secrets exec_cloud
 
 exec_cloud sh -lc "kubectl kustomize --load-restrictor=LoadRestrictionsNone /tmp/helpdesk-dr/manifests/kubernetes/cloud | kubectl apply -f -"
 localstack_url="$(discover_localstack_endpoint exec_cloud)"

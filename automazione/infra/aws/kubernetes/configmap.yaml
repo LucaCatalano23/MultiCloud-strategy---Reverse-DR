@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: helios-aws-config
+  namespace: helios-desk
+data:
+  AWS_REGION: REPLACE_AWS_REGION
+  SITE_MODE: primary
+  SITE_NAME: aws-primary
+  IDENTITY_PROVIDER: entra-id
+  DR_ACTIVE: "true"
+  OIDC_ISSUER_URL: REPLACE_ENTRA_ISSUER_URL
+  OIDC_AUDIENCE: REPLACE_ENTRA_API_CLIENT_ID_GUID
+  OIDC_JWKS_URL: REPLACE_ENTRA_JWKS_URL
+  OIDC_ROLES_CLAIM: roles
+  OIDC_REQUIRED_ALGORITHMS: RS256
+  OIDC_CLIENT_ID: REPLACE_ENTRA_BFF_CLIENT_ID_GUID
+  OIDC_REDIRECT_URI: https://REPLACE_APP_HOSTNAME/api/v1/auth/callback
+  OIDC_POST_LOGOUT_REDIRECT_URI: https://REPLACE_APP_HOSTNAME/
+  OIDC_AUTHORIZATION_ENDPOINT: REPLACE_ENTRA_AUTHORIZATION_ENDPOINT
+  OIDC_TOKEN_ENDPOINT: REPLACE_ENTRA_TOKEN_ENDPOINT
+  OIDC_END_SESSION_ENDPOINT: REPLACE_ENTRA_END_SESSION_ENDPOINT
+  TICKET_SERVICE_URL: http://helios-ticket-service.helios-desk.svc.cluster.local:8001
+  AUTOMATION_SERVICE_URL: http://helios-automation-service.helios-desk.svc.cluster.local:8002
+  AUTOMATION_MODE: aws-lambda
+  HELPDESK_LAMBDA_FUNCTION_NAME: REPLACE_AUTOMATION_LAMBDA_FUNCTION_NAME
+  BACKUP_S3_BUCKET: REPLACE_BACKUP_BUCKET_NAME
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: helios-web-runtime
+  namespace: helios-desk
+data:
+  runtime-config.json: |
+    {
+      "appName": "Helios Desk",
+      "apiBasePath": "/api/v1",
+      "demoMode": false,
+      "csrfCookieName": "__Host-helios_csrf",
+      "csrfHeaderName": "X-CSRF-Token"
+    }

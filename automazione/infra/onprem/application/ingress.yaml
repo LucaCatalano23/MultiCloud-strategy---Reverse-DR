@@ -1,0 +1,46 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: helios-desk
+  namespace: helios-desk
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.priority: "100"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - helpdesk.azienda.lan
+      secretName: helios-app-tls
+  rules:
+    - host: helpdesk.azienda.lan
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: helios-bff
+                port:
+                  name: http
+          - path: /health
+            pathType: Prefix
+            backend:
+              service:
+                name: helios-bff
+                port:
+                  name: http
+          - path: /dr-status
+            pathType: Exact
+            backend:
+              service:
+                name: helios-bff
+                port:
+                  name: http
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: helios-web
+                port:
+                  name: http

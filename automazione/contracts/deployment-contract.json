@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "application": {
+    "name": "helios-desk",
+    "publicApiBasePath": "/api/v1",
+    "canonicalLabHost": "helpdesk.azienda.lan"
+  },
+  "kubernetes": {
+    "applicationNamespace": "helios-desk",
+    "identityNamespace": "helios-identity",
+    "workloads": [
+      {
+        "name": "helios-web",
+        "port": 8080,
+        "healthPath": "/healthz",
+        "public": true
+      },
+      {
+        "name": "helios-bff",
+        "port": 8000,
+        "healthPath": "/health/ready",
+        "public": true
+      },
+      {
+        "name": "helios-ticket-service",
+        "port": 8001,
+        "healthPath": "/health/ready",
+        "public": false
+      },
+      {
+        "name": "helios-automation-service",
+        "port": 8002,
+        "healthPath": "/health/ready",
+        "public": false
+      }
+    ]
+  },
+  "identity": {
+    "primary": {
+      "provider": "entra-id",
+      "flow": "authorization-code-pkce",
+      "audienceSource": "entra.api_application_client_id"
+    },
+    "dr": {
+      "provider": "keycloak",
+      "issuer": "https://auth.azienda.lan/realms/helios-desk",
+      "audienceSource": "entra.api_application_client_id",
+      "requiresOfflineIdentitySource": true
+    },
+    "permissions": [
+      "tickets.read",
+      "tickets.write",
+      "automation.execute"
+    ]
+  },
+  "sites": {
+    "primary": {
+      "platform": "aws",
+      "orchestrator": "eks",
+      "database": "rds-postgresql-single-az",
+      "identityProvider": "entra-id"
+    },
+    "dr": {
+      "platform": "on-prem",
+      "orchestrator": "k3s",
+      "database": "postgresql",
+      "identityProvider": "keycloak",
+      "applicationReplicasAtRest": 0,
+      "promotionOrchestrator": "ansible"
+    }
+  }
+}

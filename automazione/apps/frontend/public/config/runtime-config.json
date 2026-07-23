@@ -1,0 +1,7 @@
+{
+  "appName": "Helios Desk",
+  "apiBasePath": "/api/v1",
+  "demoMode": true,
+  "csrfCookieName": "__Host-helios_csrf",
+  "csrfHeaderName": "X-CSRF-Token"
+}

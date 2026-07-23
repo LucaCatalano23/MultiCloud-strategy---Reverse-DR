@@ -1,0 +1,53 @@
+aws_region   = "eu-west-1"
+project_name = "reverse-dr"
+environment  = "poc"
+
+# Keep this order: primary workload AZ, then minimal witness AZ.
+availability_zones = ["eu-west-1a", "eu-west-1b"]
+
+vpc_cidr                    = "10.42.0.0/16"
+primary_public_subnet_cidr  = "10.42.0.0/24"
+witness_public_subnet_cidr  = "10.42.1.0/27"
+primary_private_subnet_cidr = "10.42.10.0/24"
+witness_private_subnet_cidr = "10.42.11.0/28"
+
+nat_instance_type = "t4g.nano"
+
+eks_endpoint_public_access = false
+# Used only if the public endpoint is enabled; replace with an operator/VPN egress IP.
+eks_public_access_cidrs = ["203.0.113.10/32"]
+# Add a real deployment role ARN before apply. Empty means no human cluster administrator.
+eks_admin_principal_arns = []
+
+eks_node_instance_types = ["t3.medium"]
+eks_node_capacity_type   = "ON_DEMAND"
+eks_node_min_size        = 1
+eks_node_desired_size    = 1
+eks_node_max_size        = 2
+eks_node_disk_size_gib   = 30
+
+database_name                      = "helpdesk"
+database_master_username           = "platform_admin"
+database_engine_version            = "16"
+database_instance_class            = "db.t4g.micro"
+database_allocated_storage_gib     = 20
+database_max_allocated_storage_gib = 100
+database_backup_retention_days     = 7
+database_deletion_protection       = false
+database_skip_final_snapshot       = true
+
+bucket_force_destroy = false
+enable_cloudfront_frontend = false
+cloudfront_price_class = "PriceClass_100"
+
+# Optional. Use an immutable ECR digest for a Lambda-compatible automation image.
+automation_lambda_image_uri = null
+automation_lambda_architecture = "x86_64"
+
+enable_vpc_flow_logs = false
+log_retention_days   = 30
+
+common_tags = {
+  Owner      = "platform-team"
+  CostCenter = "thesis-poc"
+}

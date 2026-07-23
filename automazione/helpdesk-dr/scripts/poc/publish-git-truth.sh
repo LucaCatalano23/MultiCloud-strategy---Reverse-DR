@@ -20,7 +20,16 @@ cp -R "${ROOT_DIR}/app" "${workdir}/app"
 cp -R "${ROOT_DIR}/ansible" "${workdir}/ansible"
 cp -R "${ROOT_DIR}/manifests" "${workdir}/manifests"
 cp -R "${ROOT_DIR}/scripts" "${workdir}/scripts"
-cp "${ROOT_DIR}/config.env" "${workdir}/config.env"
+if [ -d "${ROOT_DIR}/../infra/onprem" ]; then
+  mkdir -p "${workdir}/infra"
+  cp -R "${ROOT_DIR}/../infra/onprem" "${workdir}/infra/onprem"
+fi
+if [ -f "${ROOT_DIR}/../contracts/deployment-contract.json" ]; then
+  mkdir -p "${workdir}/contracts"
+  cp "${ROOT_DIR}/../contracts/deployment-contract.json" "${workdir}/contracts/deployment-contract.json"
+fi
+cp "${ROOT_DIR}/config.defaults" "${workdir}/config.defaults"
+cp "${ROOT_DIR}/config.env.example" "${workdir}/config.env.example"
 cp "${ROOT_DIR}/README.md" "${workdir}/README.md"
 
 git -C "${workdir}" init --initial-branch=main

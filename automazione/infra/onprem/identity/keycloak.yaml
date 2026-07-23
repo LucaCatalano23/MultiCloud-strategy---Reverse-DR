@@ -1,0 +1,165 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: helios-identity
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/component: identity-provider
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: keycloak
+        app.kubernetes.io/component: identity-provider
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.7.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - start
+            - --import-realm
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 9000
+          env:
+            - name: KC_DB
+              value: postgres
+            - name: KC_DB_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-postgres
+                  key: POSTGRES_DB
+            - name: KC_DB_URL
+              value: jdbc:postgresql://keycloak-postgres.helios-identity.svc.cluster.local:5432/$(KC_DB_DATABASE)
+            - name: KC_DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-postgres
+                  key: POSTGRES_USER
+            - name: KC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-postgres
+                  key: POSTGRES_PASSWORD
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-bootstrap-admin
+                  key: username
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-bootstrap-admin
+                  key: password
+            - name: HELIOS_BFF_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: helios-bff-oidc
+                  key: OIDC_CLIENT_SECRET
+            - name: HELIOS_API_AUDIENCE
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-identity-config
+                  key: HELIOS_API_AUDIENCE
+            - name: KC_HOSTNAME
+              value: https://auth.azienda.lan
+            - name: KC_HOSTNAME_STRICT
+              value: "true"
+            - name: KC_HTTP_ENABLED
+              value: "true"
+            - name: KC_PROXY_HEADERS
+              value: xforwarded
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+            - name: KC_METRICS_ENABLED
+              value: "true"
+            - name: KC_CACHE
+              value: local
+            - name: JAVA_OPTS_KC_HEAP
+              value: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=65
+          startupProbe:
+            httpGet:
+              path: /health/started
+              port: management
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: management
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: management
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: 250m
+              memory: 768Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: realm-import
+              mountPath: /opt/keycloak/data/import/helios-desk-realm.json
+              subPath: helios-desk-realm.json
+              readOnly: true
+            - name: data
+              mountPath: /opt/keycloak/data/tmp
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: realm-import
+          configMap:
+            name: keycloak-realm-import
+        - name: data
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: helios-identity
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/component: identity-provider
+spec:
+  selector:
+    app.kubernetes.io/name: keycloak
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+    - name: management
+      port: 9000
+      targetPort: management

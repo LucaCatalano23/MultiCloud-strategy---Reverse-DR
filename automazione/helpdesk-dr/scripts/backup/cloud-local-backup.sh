@@ -2,9 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-# shellcheck source=../../config.env
-source "${ROOT_DIR}/config.env"
+# shellcheck source=lib.sh
+source "${SCRIPT_DIR}/../common/lib.sh"
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 backup_name="helpdesk-${timestamp}.sql.gz"

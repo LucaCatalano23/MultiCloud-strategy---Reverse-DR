@@ -1,0 +1,169 @@
+.dialog-backdrop {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  padding: 20px;
+  place-items: center;
+  background: rgb(3 16 36 / 58%);
+  backdrop-filter: blur(3px);
+  animation: dialog-backdrop-in var(--motion-fast) ease-out;
+}
+
+.dialog-dismiss-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+}
+
+.ticket-dialog {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  border-radius: var(--radius-lg);
+  background: #fff;
+  box-shadow: var(--shadow-float);
+  animation: dialog-in var(--motion-standard) cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.ticket-dialog > header {
+  display: flex;
+  min-height: 74px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ticket-dialog h2 {
+  color: var(--color-ink);
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.ticket-dialog header p {
+  margin-top: 4px;
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+.ticket-dialog header button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 5px;
+  color: var(--color-muted);
+  background: transparent;
+}
+
+.ticket-dialog header button:hover {
+  background: var(--color-blue-50);
+}
+
+.ticket-dialog form {
+  display: flex;
+  gap: 15px;
+  flex-direction: column;
+  padding: 20px;
+}
+
+.ticket-dialog label {
+  display: flex;
+  gap: 6px;
+  flex-direction: column;
+}
+
+.ticket-dialog label > span {
+  color: var(--color-text);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.ticket-dialog input,
+.ticket-dialog textarea,
+.ticket-dialog select {
+  width: 100%;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  outline: 0;
+  color: var(--color-text);
+  background: #fff;
+  font-size: 12px;
+}
+
+.ticket-dialog input,
+.ticket-dialog select {
+  height: 38px;
+  padding: 0 11px;
+}
+
+.ticket-dialog textarea {
+  min-height: 108px;
+  padding: 10px 11px;
+  resize: vertical;
+}
+
+.ticket-dialog input:focus,
+.ticket-dialog textarea:focus,
+.ticket-dialog select:focus {
+  border-color: var(--color-blue-500);
+  box-shadow: 0 0 0 3px rgb(37 115 255 / 10%);
+}
+
+.dialog-field-row {
+  display: grid;
+  grid-template-columns: 0.8fr 1.2fr;
+  gap: 13px;
+}
+
+.ticket-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin: 3px -20px -20px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--color-border);
+  background: #fbfcfe;
+}
+
+.form-error {
+  padding: 8px 10px;
+  border-radius: 4px;
+  color: #b71321;
+  background: var(--color-red-soft);
+  font-size: 11px;
+}
+
+@keyframes dialog-backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+}
+
+@media (max-width: 520px) {
+  .dialog-backdrop {
+    padding: 0;
+    place-items: end stretch;
+  }
+
+  .ticket-dialog {
+    width: 100%;
+    max-height: 92dvh;
+    border-radius: 14px 14px 0 0;
+  }
+
+  .dialog-field-row {
+    grid-template-columns: 1fr;
+  }
+}
