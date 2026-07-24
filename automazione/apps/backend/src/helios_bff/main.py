@@ -10,7 +10,12 @@ from helios_bff.config import BffSettings
 from helios_bff.infrastructure.crypto import FernetSecretProtector
 from helios_bff.infrastructure.oidc_client import HttpOidcBrowserClient, OidcBrowserConfig
 from helios_bff.infrastructure.postgres import PostgresAuthStore
-from helios_bff.infrastructure.service_clients import HttpPlatformProbe, HttpTicketClient
+from helios_bff.infrastructure.service_clients import (
+    HttpAutomationClient,
+    HttpPlatformProbe,
+    HttpTicketClient,
+)
+from helios_bff.infrastructure.telemetry import PostgresDrTelemetryStore
 from helios_bff.presentation.api import BffSite, create_app
 from helios_shared.oidc import OidcJwtAuthenticator, OidcVerificationConfig, PyJwkSigningKeyProvider
 
@@ -58,12 +63,13 @@ def build_app() -> FastAPI:
         FernetSecretProtector(settings.session_encryption_key.get_secret_value()),
     )
     tickets = HttpTicketClient(settings.ticket_service_url, http_client)
+    automation = HttpAutomationClient(settings.automation_service_url, http_client)
     platform = HttpPlatformProbe(
         ticket_client=tickets,
-        automation_base_url=settings.automation_service_url,
-        client=http_client,
-        rpo_minutes=settings.rpo_minutes,
-        rpo_target_minutes=settings.rpo_target_minutes,
+        automation_client=automation,
+        telemetry=PostgresDrTelemetryStore(pool),
+        rpo_target_seconds=settings.rpo_target_seconds,
+        rto_target_seconds=settings.rto_target_seconds,
     )
 
     @asynccontextmanager
@@ -78,6 +84,7 @@ def build_app() -> FastAPI:
     return create_app(
         auth=auth,
         tickets=tickets,
+        automation=automation,
         platform=platform,
         site=BffSite(
             mode=settings.site_mode,

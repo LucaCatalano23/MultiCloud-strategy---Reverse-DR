@@ -36,6 +36,7 @@ containers=(
   router-dmz
   router-edge
   server-dns
+  vault-openbao
 )
 
 for container in "${containers[@]}"; do

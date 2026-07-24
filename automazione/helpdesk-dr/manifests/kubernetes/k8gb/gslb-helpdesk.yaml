@@ -2,7 +2,7 @@ apiVersion: k8gb.absa.oss/v1beta1
 kind: Gslb
 metadata:
   name: helpdesk
-  namespace: helpdesk
+  namespace: helios-desk
 spec:
   dnsZone: azienda.lan
   strategy:
@@ -18,6 +18,6 @@ spec:
               pathType: Prefix
               backend:
                 service:
-                  name: helpdesk-api
+                  name: helios-web
                   port:
-                    number: 80
+                    number: 8080

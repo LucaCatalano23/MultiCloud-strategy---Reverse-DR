@@ -1,18 +1,9 @@
+# Overlay on-prem del solo data layer condiviso.
+#
+# Il monolite `helpdesk-api` e il suo overlay cloud sono stati rimossi: l'unico
+# applicativo della PoC e' ora Helios (`infra/onprem`). Qui resta il PostgreSQL
+# su cui vive anche il database dedicato `helios`, quindi l'overlay non e'
+# ridondante nonostante non deployi piu' alcuna applicazione.
 resources:
   - ../base/namespace.yaml
   - ../base/postgres.yaml
-  - ../base/helpdesk.yaml
-
-configMapGenerator:
-  - name: helpdesk-site
-    namespace: helpdesk
-    literals:
-      - SITE_ROLE=standby
-      - SITE_NAME=on-prem
-      - DR_READY_POLICY=flag
-      - DR_ACTIVE=false
-  - name: helpdesk-automation
-    namespace: helpdesk
-    literals:
-      - AUTOMATION_MODE=lambda-dr
-      - LAMBDA_DR_BASE_URL=http://event-adapter.lambda-dr.svc.cluster.local:8080

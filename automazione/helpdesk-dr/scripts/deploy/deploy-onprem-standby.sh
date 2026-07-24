@@ -28,41 +28,34 @@ fi
 
 exec_onprem kubectl apply -f /tmp/helpdesk-dr/infra/onprem/namespaces.yaml
 
-required_secrets=(
-  "helios-identity/keycloak-postgres"
-  "helios-identity/keycloak-bootstrap-admin"
-  "helios-identity/helios-bff-oidc"
-  "helios-identity/helios-dr-operator"
-  "helios-identity/helios-identity-tls"
-  "helios-desk/helios-bff-runtime"
-  "helios-desk/helios-app-database"
-  "helios-desk/helios-app-tls"
-)
-for secret_ref in "${required_secrets[@]}"; do
-  namespace="${secret_ref%%/*}"
-  secret_name="${secret_ref##*/}"
-  if ! exec_onprem kubectl -n "${namespace}" get secret "${secret_name}" >/dev/null 2>&1; then
-    cat >&2 <<EOF
-Missing Secret/${secret_name} in namespace ${namespace}.
-Provision secrets out-of-band with infra/onprem/scripts/create-secrets.sh before deploying standby.
+# I Secret non sono piu' un prerequisito: li materializza External Secrets
+# Operator dopo che l'overlay e' stato applicato, leggendoli da OpenBao.
+# Verificare la loro presenza *prima* del deploy fallirebbe sempre. Cio' che
+# deve esistere prima e' l'infrastruttura che li produce: il vault raggiungibile
+# e dissigillato, e le CRD dell'operatore installate nel cluster.
+if ! bash "${ROOT_DIR}/../infra/vault/scripts/verify-openbao.sh"; then
+  cat >&2 <<'EOF'
+OpenBao non e' utilizzabile: i workload Helios non potrebbero ottenere le proprie
+credenziali. Vedi automazione/infra/vault/README.md.
 EOF
-    exit 1
-  fi
-done
+  exit 1
+fi
 
-apply_helpdesk_runtime_secrets exec_onprem
+if ! exec_onprem kubectl get crd externalsecrets.external-secrets.io >/dev/null 2>&1; then
+  cat >&2 <<'EOF'
+External Secrets Operator non e' installato nel cluster on-prem.
+Installalo prima del deploy: vedi automazione/infra/onprem/README.md.
+EOF
+  exit 1
+fi
+
+apply_postgres_runtime_secret exec_onprem
 exec_onprem sh -lc "kubectl kustomize --load-restrictor=LoadRestrictionsNone /tmp/helpdesk-dr/manifests/kubernetes/onprem | kubectl apply -f -"
 exec_onprem sh -lc "kubectl kustomize --load-restrictor=LoadRestrictionsNone /tmp/helpdesk-dr/infra/onprem | kubectl apply -f -"
 
 exec_onprem kubectl -n "${APP_NAMESPACE}" rollout status deployment/postgres --timeout=180s
 exec_onprem kubectl -n helios-identity rollout status statefulset/keycloak-postgres --timeout=300s
 exec_onprem kubectl -n helios-identity rollout status deployment/keycloak --timeout=300s
-
-exec_onprem kubectl -n "${APP_NAMESPACE}" scale deployment/helpdesk-api --replicas="${ONPREM_STANDBY_REPLICAS:-1}"
-if [ "${ONPREM_STANDBY_REPLICAS:-1}" -gt 0 ]; then
-  pod="$(wait_for_deployment_pod exec_onprem app=helpdesk-api)"
-  wait_for_pod_running exec_onprem "${pod}"
-fi
 
 HELIOS_DR_NAMESPACE="${HELIOS_DR_NAMESPACE:-helios-desk}"
 HELIOS_DR_WORKLOADS="${HELIOS_DR_WORKLOADS:-helios-ticket-service helios-automation-service helios-bff helios-web}"

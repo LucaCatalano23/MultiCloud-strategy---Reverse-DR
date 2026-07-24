@@ -30,10 +30,5 @@ if exec_onprem kubectl get namespace "${HELIOS_DR_NAMESPACE}" >/dev/null 2>&1; t
   done
 fi
 
-if exec_onprem kubectl -n "${APP_NAMESPACE}" get deployment/helpdesk-api >/dev/null 2>&1; then
-  exec_onprem kubectl -n "${APP_NAMESPACE}" set env deployment/helpdesk-api DR_ACTIVE=false || true
-  exec_onprem kubectl -n "${APP_NAMESPACE}" scale deployment/helpdesk-api --replicas="${ONPREM_STANDBY_REPLICAS:-1}" || true
-fi
-
 write_dr_state "primary"
 echo "On-prem demoted to standby."

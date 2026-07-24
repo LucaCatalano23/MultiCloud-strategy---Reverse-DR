@@ -48,7 +48,7 @@ Il control plane EKS resta un servizio gestito AWS e non è reso mono-AZ. Il man
 | Compute | EKS, un managed node group EC2 nella sola AZ primaria, AL2023, volumi gp3 cifrati |
 | Add-on | VPC CNI e EBS CSI con IRSA dedicata, CoreDNS, kube-proxy |
 | Ingress | subnet taggate e ruolo IRSA per AWS Load Balancer Controller; l'ALB nasce solo quando viene applicato un Ingress Kubernetes |
-| Registry | ECR immutabile e scan-on-push per `frontend`, `bff`, `ticket`, `automation` |
+| Registry | ECR immutabile e scan-on-push per `frontend`, `bff`, `ticket`, `automation`, `ticket-processor` |
 | Data | RDS PostgreSQL single-AZ, password master generata da RDS in Secrets Manager, TLS/IAM DB auth disponibili |
 | Storage | bucket S3 privato/versionato per backup logici e bucket origine privato per build React |
 | Edge | CloudFront opzionale con Origin Access Control, HTTPS, HTTP/2+3, header di sicurezza e fallback SPA |
@@ -68,7 +68,7 @@ Con i valori predefiniti il prefisso è `reverse-dr-poc`:
 - cluster EKS: `reverse-dr-poc`;
 - node group: `reverse-dr-poc-primary`;
 - RDS: `reverse-dr-poc-postgres`;
-- ECR: `reverse-dr-poc-frontend`, `reverse-dr-poc-bff`, `reverse-dr-poc-ticket`, `reverse-dr-poc-automation`;
+- ECR: `reverse-dr-poc-frontend`, `reverse-dr-poc-bff`, `reverse-dr-poc-ticket`, `reverse-dr-poc-automation`, `reverse-dr-poc-ticket-processor`;
 - bus: `reverse-dr-poc-application`;
 - queue: `reverse-dr-poc-ticket-automation`;
 - namespace Kubernetes: `helios-desk`.
@@ -100,6 +100,12 @@ Shape suggerite, senza valori reali:
 ```
 
 Issuer, client ID e audience Entra sono non-secret e restano nel ConfigMap cloud. L'audience deve provenire dall'output canonico `entra.api_application_client_id` definito dal deployment contract, non da una stringa duplicata.
+
+Il CronJob di backup ha bisogno anche di `psql`, non solo di `pg_dump`: dopo un
+upload S3 riuscito registra la metrica `backup.last_success` nella tabella
+`dr_telemetry`, che è la fonte dell'RPO mostrato dalla dashboard. La metrica
+viene scritta **dopo** l'upload, non dopo il dump: dichiararla prima farebbe
+misurare un RPO che il sito DR non potrebbe realmente rispettare.
 
 Il BFF legge entrambi i secret perché persiste `bff_sessions` e `oauth_transactions` in PostgreSQL; non è previsto DynamoDB o Redis. I pod assumono ruoli tramite service account IRSA:
 

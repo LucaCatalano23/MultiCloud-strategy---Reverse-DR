@@ -20,7 +20,11 @@ source "${HELPDESK_DR_CONFIG_PATH}"
 
 : "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be supplied by the DR secrets file}"
 
-apply_helpdesk_runtime_secrets() {
+# Credenziali del solo PostgreSQL condiviso. Il Secret `helpdesk-aws`, che
+# serviva al monolite rimosso per invocare AWS Lambda, non viene piu' creato:
+# le credenziali AWS della generazione corrente arrivano da IRSA sul sito
+# primario, non da un Secret statico nel cluster di laboratorio.
+apply_postgres_runtime_secret() {
   local executor="$1"
 
   "${executor}" kubectl get namespace "${APP_NAMESPACE}" >/dev/null 2>&1 || \
@@ -33,16 +37,6 @@ apply_helpdesk_runtime_secrets() {
       --from-literal=POSTGRES_PASSWORD="$4" \
       --dry-run=client -o yaml | kubectl apply -f -
   ' sh "${APP_NAMESPACE}" "${POSTGRES_DB}" "${POSTGRES_USER}" "${POSTGRES_PASSWORD}"
-
-  if [ -n "${AWS_ACCESS_KEY_ID:-}" ] && [ -n "${AWS_SECRET_ACCESS_KEY:-}" ]; then
-    "${executor}" sh -c '
-      set -eu
-      kubectl -n "$1" create secret generic helpdesk-aws \
-        --from-literal=AWS_ACCESS_KEY_ID="$2" \
-        --from-literal=AWS_SECRET_ACCESS_KEY="$3" \
-        --dry-run=client -o yaml | kubectl apply -f -
-    ' sh "${APP_NAMESPACE}" "${AWS_ACCESS_KEY_ID}" "${AWS_SECRET_ACCESS_KEY}"
-  fi
 }
 
 lxc_retry() {
@@ -285,19 +279,19 @@ EOF"
   rm -f "${ROOT_DIR}/.helpdesk.zone"
 }
 
+# Con il monolite rimosso, sul sito cloud simulato non gira piu' un'applicazione
+# da interrogare via HTTP: la sonda diventa la raggiungibilita' del data plane
+# Kubernetes, che e' esattamente il failure domain che il drill spegne
+# (`lxc stop cloud-k3s`) e cio' che dr-controller deve saper rilevare.
 cloud_ready() {
-  probe_cloud curl -fsS -H "Host: ${HELPDESK_FQDN}" "http://127.0.0.1/health/ready" >/dev/null
+  probe_cloud kubectl get --raw /readyz >/dev/null
 }
 
 onprem_ready() {
   local helios_namespace="${HELIOS_DR_NAMESPACE:-helios-desk}"
-  if exec_onprem kubectl -n "${helios_namespace}" get deployment/helios-bff >/dev/null 2>&1; then
-    exec_onprem kubectl get --raw \
-      "/api/v1/namespaces/${helios_namespace}/services/http:helios-bff:http/proxy/health/ready" \
-      >/dev/null
-    return
-  fi
-  exec_onprem curl -fsS -H "Host: ${HELPDESK_FQDN}" "http://127.0.0.1/health/ready" >/dev/null
+  exec_onprem kubectl get --raw \
+    "/api/v1/namespaces/${helios_namespace}/services/http:helios-bff:http/proxy/health/ready" \
+    >/dev/null
 }
 
 wait_for_deployment_pod() {

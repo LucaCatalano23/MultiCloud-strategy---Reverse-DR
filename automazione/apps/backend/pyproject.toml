@@ -11,7 +11,10 @@ dynamic = ["dependencies"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+# La function `helpdesk-ticket-processor` vive fuori da src/ perche' non e' un
+# servizio: e' l'artefatto Lambda condiviso fra sito primario e lambda-dr.
+# Resta comunque coperta da test qui, non essendoci una seconda suite Python.
+pythonpath = ["src", "../functions/ticket-processor"]
 asyncio_mode = "auto"
 addopts = "-ra --strict-markers --cov=src --cov-report=term-missing --cov-fail-under=80"
 markers = [

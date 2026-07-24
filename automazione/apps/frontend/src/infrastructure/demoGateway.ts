@@ -193,8 +193,24 @@ const demoPlatformStatus: PlatformStatus = {
     { id: 'aws', name: 'AWS Primary', status: 'operational' },
     { id: 'identity', name: 'Entra ID', status: 'operational' },
   ],
-  rpoMinutes: 4,
-  rpoTargetMinutes: 15,
+  // In modalità dimostrativa non esiste né un CronJob di backup né un playbook
+  // di failover: i valori sono verosimili ma inventati, esattamente come i
+  // ticket seed. Con `demoMode: false` le stesse metriche arrivano dalla
+  // tabella `dr_telemetry` scritta dai due orchestratori reali.
+  dr: {
+    backup: {
+      lastSuccessAt: '2026-07-22T09:38:00+02:00',
+      ageSeconds: 240,
+      targetSeconds: 900,
+      status: 'ok',
+    },
+    failover: {
+      lastPromotionAt: '2026-07-19T02:14:00+02:00',
+      durationSeconds: 1265,
+      targetSeconds: 1800,
+      status: 'ok',
+    },
+  },
   activities: [
     {
       id: 'activity-1',
@@ -250,6 +266,10 @@ export function createDemoGateway(): HeliosGateway {
     getPlatformStatus: async () => ({
       ...demoPlatformStatus,
       services: demoPlatformStatus.services.map((service) => ({ ...service })),
+      dr: {
+        backup: { ...demoPlatformStatus.dr.backup },
+        failover: { ...demoPlatformStatus.dr.failover },
+      },
       activities: demoPlatformStatus.activities.map((activity) => ({ ...activity })),
     }),
     createTicket: async (input: CreateTicketInput) => {
@@ -282,6 +302,27 @@ export function createDemoGateway(): HeliosGateway {
     },
     deleteTicket: async (id) => {
       tickets = tickets.filter((ticket) => ticket.id !== id)
+    },
+    runTicketAutomation: async (id) => {
+      const ticket = tickets.find((item) => item.id === id)
+      if (!ticket) throw new Error('Ticket non trovato')
+      // Il provider dipende dal sito: è la stessa distinzione che in esecuzione
+      // reale nasce da AUTOMATION_MODE lato automation service.
+      const isPrimary = session.site.mode === 'primary'
+      return {
+        id: `demo-run-${id}`,
+        provider: isPrimary ? 'aws-lambda' : 'lambda-dr',
+        status: 'succeeded',
+        errorCode: null,
+        result: {
+          eventType: 'helios.ticket.processed.v1',
+          ticketId: id,
+          classification: ticket.priority === 'high' ? 'incident' : 'service-request',
+          runtime: isPrimary ? 'aws-lambda-cloud' : 'lambda-rie-onprem',
+          processedAt: new Date().toISOString(),
+        },
+        updatedAt: new Date().toISOString(),
+      }
     },
     logout: async () => {
       session = { ...session, authenticated: false, user: null }

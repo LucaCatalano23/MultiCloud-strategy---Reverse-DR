@@ -9,8 +9,8 @@ import {
   MessageSquareText,
 } from 'lucide-react'
 import { useState } from 'react'
-import { formatUpdatedAt } from '../../domain/presentation'
-import type { PlatformService, PlatformStatus } from '../../domain/types'
+import { formatDuration, formatUpdatedAt } from '../../domain/presentation'
+import type { DrMetricStatus, PlatformService, PlatformStatus } from '../../domain/types'
 
 interface OperationsRailProps {
   readonly platform: PlatformStatus
@@ -21,6 +21,60 @@ const statusLabels = {
   degraded: 'Degradato',
   unavailable: 'Non disponibile',
 } as const
+
+const drStatusLabels: Readonly<Record<DrMetricStatus, string>> = {
+  ok: 'Entro obiettivo',
+  warning: 'Oltre obiettivo',
+  critical: 'Critico',
+  unknown: 'Mai misurato',
+}
+
+// La metrica DR ha quattro stati ma la pillola ne conosce tre: mappiamo su
+// quelle esistenti invece di duplicare la scala cromatica.
+const drStatusClasses: Readonly<Record<DrMetricStatus, string>> = {
+  ok: 'operational',
+  warning: 'degraded',
+  critical: 'unavailable',
+  unknown: 'unknown',
+}
+
+interface DrMetricRowProps {
+  readonly label: string
+  readonly value: number | null
+  readonly targetSeconds: number
+  readonly status: DrMetricStatus
+  readonly measuredAt: string | null
+  readonly note: string
+}
+
+function DrMetricRow({
+  label,
+  value,
+  targetSeconds,
+  status,
+  measuredAt,
+  note,
+}: DrMetricRowProps) {
+  return (
+    <div className="platform-item platform-item--metric">
+      <Clock3 size={30} strokeWidth={1.7} aria-hidden="true" />
+      <div>
+        <strong>
+          {label} {formatDuration(value)}
+        </strong>
+        <span>
+          Obiettivo {formatDuration(targetSeconds)}
+          {measuredAt ? ` · ${formatUpdatedAt(measuredAt)}` : ''}
+        </span>
+        <span className="metric-note">{note}</span>
+      </div>
+      <span className={`health health--${drStatusClasses[status]}`}>
+        <i aria-hidden="true" />
+        {drStatusLabels[status]}
+      </span>
+    </div>
+  )
+}
 
 function ServiceIcon({ service }: { readonly service: PlatformService }) {
   if (service.id === 'identity') {
@@ -67,16 +121,22 @@ export function OperationsRail({ platform }: OperationsRailProps) {
                 </span>
               </div>
             ))}
-            <div className="platform-item platform-item--rpo">
-              <Clock3 size={30} strokeWidth={1.7} aria-hidden="true" />
-              <div>
-                <strong>RPO {platform.rpoMinutes} min</strong>
-                <span>Obiettivo {platform.rpoTargetMinutes} min</span>
-              </div>
-              <span className="health health--operational">
-                <i aria-hidden="true" /> OK
-              </span>
-            </div>
+            <DrMetricRow
+              label="RPO"
+              value={platform.dr.backup.ageSeconds}
+              targetSeconds={platform.dr.backup.targetSeconds}
+              status={platform.dr.backup.status}
+              measuredAt={platform.dr.backup.lastSuccessAt}
+              note="Età dell'ultimo backup completato"
+            />
+            <DrMetricRow
+              label="RTO"
+              value={platform.dr.failover.durationSeconds}
+              targetSeconds={platform.dr.failover.targetSeconds}
+              status={platform.dr.failover.status}
+              measuredAt={platform.dr.failover.lastPromotionAt}
+              note="Durata dell'ultimo failover, rilevamento guasto escluso"
+            />
           </div>
         ) : null}
       </section>

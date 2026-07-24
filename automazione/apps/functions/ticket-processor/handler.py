@@ -1,0 +1,130 @@
+"""Function `helpdesk-ticket-processor`: triage automatico di un ticket.
+
+Questo file e' la **sorgente unica** della function. Lo stesso codice viene
+eseguito in due runtime diversi senza modifiche:
+
+- sito primario: AWS Lambda (immagine container in ECR), invocata da
+  `helios-automation-service` con `AUTOMATION_MODE=aws-lambda` via boto3;
+- sito DR: `lambda-dr` su k3s, stesso handler servito da AWS Lambda RIE dietro
+  `event-adapter`, invocato con `AUTOMATION_MODE=lambda-dr` via HTTP.
+
+Quale dei due esegue non e' deciso qui ne' nel codice applicativo: e' una
+scelta di deployment (`AUTOMATION_MODE` + `HELIOS_FUNCTION_*`). La copia inline
+nel ConfigMap di `lambda-dr/kubernetes/helpdesk-ticket-processor.yaml` deve
+restare identica a questo file: il gate `automazione/tests/deployment-contract.ps1`
+lo verifica.
+
+## Due forme di evento, una sola logica
+
+I due percorsi consegnano payload diversi e l'handler li normalizza:
+
+- invoke diretta AWS: il payload E' l'EventEnvelope Helios, quindi il ticket sta
+  in `data.ticket`, e la risposta attesa e' l'oggetto risultato nudo;
+- percorso DR: `event-adapter` costruisce un evento API Gateway proxy con il
+  ticket nel `body`, e si aspetta indietro `{statusCode, headers, body}`.
+
+Rispondere sempre con l'envelope proxy renderebbe il risultato del sito primario
+diverso da quello del DR (`{"statusCode":...,"body":"..."}` invece del risultato),
+cioe' romperebbe proprio l'invariante che la PoC vuole dimostrare.
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+import os
+from datetime import datetime, timezone
+from typing import Any
+
+
+# Obiettivi di presa in carico per priorita'. Sono valori di laboratorio, non
+# uno SLA contrattuale: servono a rendere il risultato della function
+# deterministico e verificabile in una demo di failover.
+SLA_TARGET_MINUTES = {"high": 30, "medium": 240, "low": 1440}
+
+PRODUCTION_ENVIRONMENTS = frozenset({"prod", "produzione", "production"})
+
+
+def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+    is_proxy_event = "body" in event and "httpMethod" in event
+    ticket = _extract_ticket(event)
+    result = _process(ticket, request_id=_request_id(event, context))
+
+    if not is_proxy_event:
+        return result
+    return {
+        "statusCode": 200,
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps(result),
+    }
+
+
+def _process(ticket: dict[str, Any], *, request_id: str | None) -> dict[str, Any]:
+    priority = str(ticket.get("priority") or "medium").lower()
+    environment = str(ticket.get("environment") or "").strip().lower()
+    is_production = environment in PRODUCTION_ENVIRONMENTS
+    classification = "incident" if (priority == "high" and is_production) else "service-request"
+
+    return {
+        "eventType": "helios.ticket.processed.v1",
+        "ticketId": ticket.get("id"),
+        "classification": classification,
+        "slaTargetMinutes": SLA_TARGET_MINUTES.get(priority, SLA_TARGET_MINUTES["medium"]),
+        "suggestedQueue": _queue_for(ticket, is_production=is_production),
+        "escalate": classification == "incident",
+        "provider": _provider(),
+        "runtime": _runtime(),
+        "requestId": request_id,
+        "processedAt": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _queue_for(ticket: dict[str, Any], *, is_production: bool) -> str:
+    service = str(ticket.get("service") or "").strip().lower()
+    if not service:
+        return "triage-generico"
+    return f"{service}-{'prod' if is_production else 'std'}"
+
+
+def _extract_ticket(event: dict[str, Any]) -> dict[str, Any]:
+    """Ricava il ticket dalle forme di evento dei due runtime."""
+    raw_body = event.get("body")
+    if raw_body is not None:
+        if event.get("isBase64Encoded"):
+            raw_body = base64.b64decode(raw_body).decode("utf-8")
+        parsed = json.loads(raw_body or "{}")
+        return parsed if isinstance(parsed, dict) else {}
+
+    data = event.get("data")
+    if isinstance(data, dict) and isinstance(data.get("ticket"), dict):
+        return data["ticket"]
+
+    # Invocazione diretta con il solo ticket: accettata per non rendere la
+    # function inutilizzabile fuori dall'automation service (test, replay).
+    return event if "id" in event else {}
+
+
+def _request_id(event: dict[str, Any], context: Any) -> str | None:
+    request_context = event.get("requestContext")
+    if isinstance(request_context, dict) and request_context.get("requestId"):
+        return str(request_context["requestId"])
+    if isinstance(event.get("eventId"), str):
+        return event["eventId"]
+    return getattr(context, "aws_request_id", None)
+
+
+def _provider() -> str:
+    # AWS Lambda gestita valorizza sempre AWS_EXECUTION_ENV; RIE on-prem no.
+    # Il valore resta sovrascrivibile dal deployment perche' la dashboard lo
+    # mostra all'operatore e deve poter dichiarare il sito senza ambiguita'.
+    declared = os.getenv("HELIOS_FUNCTION_PROVIDER")
+    if declared:
+        return declared
+    return "aws-lambda" if os.getenv("AWS_EXECUTION_ENV") else "lambda-dr"
+
+
+def _runtime() -> str:
+    declared = os.getenv("HELIOS_FUNCTION_RUNTIME")
+    if declared:
+        return declared
+    return "aws-lambda-cloud" if os.getenv("AWS_EXECUTION_ENV") else "lambda-rie-onprem"

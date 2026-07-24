@@ -67,8 +67,20 @@ function createGateway(overrides: Partial<HeliosGateway> = {}): HeliosGateway {
         { id: 'aws', name: 'AWS Primary', status: 'operational' },
         { id: 'identity', name: 'Entra ID', status: 'operational' },
       ],
-      rpoMinutes: 4,
-      rpoTargetMinutes: 15,
+      dr: {
+        backup: {
+          lastSuccessAt: '2026-07-22T09:38:00+02:00',
+          ageSeconds: 240,
+          targetSeconds: 900,
+          status: 'ok',
+        },
+        failover: {
+          lastPromotionAt: null,
+          durationSeconds: null,
+          targetSeconds: 1800,
+          status: 'unknown',
+        },
+      },
       activities: [],
     }),
     createTicket: vi.fn().mockImplementation(async (input) => ({
@@ -86,6 +98,14 @@ function createGateway(overrides: Partial<HeliosGateway> = {}): HeliosGateway {
       assignee: input.assignee ?? null,
     })),
     deleteTicket: vi.fn().mockResolvedValue(undefined),
+    runTicketAutomation: vi.fn().mockResolvedValue({
+      id: 'run-1',
+      provider: 'aws-lambda',
+      status: 'succeeded',
+      errorCode: null,
+      result: { runtime: 'aws-lambda-cloud', classification: 'incident' },
+      updatedAt: '2026-07-24T10:00:01+00:00',
+    }),
     logout: vi.fn().mockResolvedValue(undefined),
     getLoginUrl: vi.fn().mockReturnValue('/api/v1/auth/login?returnTo=%2F'),
     ...overrides,
@@ -131,6 +151,44 @@ describe('Helios Desk dashboard', () => {
     expect(within(drawer).getByText('Identity')).toBeVisible()
     await user.click(within(drawer).getByRole('button', { name: 'Chiudi dettagli' }))
     expect(screen.queryByRole('complementary', { name: /Dettaglio ticket/ })).not.toBeInTheDocument()
+  })
+
+  it('runs the platform function from the drawer and shows the executing runtime', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const gateway = createGateway()
+    render(<App gateway={gateway} runtimeConfig={runtimeConfig} />)
+    await user.click(await screen.findByRole('row', { name: /TKT-2025-0576/ }))
+
+    // Act
+    const drawer = screen.getByRole('complementary', { name: 'Dettaglio ticket TKT-2025-0576' })
+    const automation = within(drawer).getByRole('region', { name: 'Automazione di piattaforma' })
+    await user.click(within(automation).getByRole('button', { name: 'Esegui' }))
+
+    // Assert: il sito che ha eseguito la function è visibile all'operatore.
+    expect(gateway.runTicketAutomation).toHaveBeenCalledWith('TKT-2025-0576')
+    await waitFor(() => expect(within(automation).getByText('aws-lambda')).toBeVisible())
+    expect(within(automation).getByText('aws-lambda-cloud')).toBeVisible()
+  })
+
+  it('reports a failed platform function without clearing the ticket detail', async () => {
+    const user = userEvent.setup()
+    const gateway = createGateway({
+      runTicketAutomation: vi.fn().mockRejectedValue(new Error('Automazione non disponibile (502)')),
+    })
+    render(<App gateway={gateway} runtimeConfig={runtimeConfig} />)
+    await user.click(await screen.findByRole('row', { name: /TKT-2025-0576/ }))
+
+    const drawer = screen.getByRole('complementary', { name: 'Dettaglio ticket TKT-2025-0576' })
+    const automation = within(drawer).getByRole('region', { name: 'Automazione di piattaforma' })
+    await user.click(within(automation).getByRole('button', { name: 'Esegui' }))
+
+    await waitFor(() =>
+      expect(within(automation).getByRole('alert')).toHaveTextContent(
+        'Automazione non disponibile (502)',
+      ),
+    )
+    expect(within(drawer).getByText('Identity')).toBeVisible()
   })
 
   it('creates a ticket from the accessible dialog and adds it to the table', async () => {

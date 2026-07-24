@@ -18,7 +18,11 @@ python3 "${ONPREM_DIR}/tests/validate_onprem.py"
 "${KUBECTL_BIN}" kustomize "${ONPREM_DIR}" >/dev/null
 
 bash -n \
-  "${ONPREM_DIR}/scripts/create-secrets.sh" \
+  "${ONPREM_DIR}/../vault/scripts/seed-secrets.sh" \
+  "${ONPREM_DIR}/../vault/scripts/configure-openbao.sh" \
+  "${ONPREM_DIR}/../vault/scripts/install-openbao.sh" \
+  "${ONPREM_DIR}/../vault/scripts/verify-openbao.sh" \
+  "${ONPREM_DIR}/../vault/scripts/enable-auto-unseal.sh" \
   "${ONPREM_DIR}/scripts/apply-migrations.sh" \
   "${ONPREM_DIR}/scripts/provision-dr-operator.sh" \
   "${ONPREM_DIR}/keycloak/provision/provision-dr-operator.sh" \

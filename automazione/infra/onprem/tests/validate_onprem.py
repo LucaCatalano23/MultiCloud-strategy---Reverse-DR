@@ -79,7 +79,15 @@ class OnPremManifestContractTest(unittest.TestCase):
         self.assertIn("replicas: 1", deployments["keycloak"])
 
     def test_no_kubernetes_secret_or_plaintext_credentials_are_rendered(self) -> None:
-        self.assertNotIn("kind: Secret", self.rendered)
+        # Confronto per riga intera e non per sottostringa: da quando i segreti
+        # arrivano da OpenBao, l'overlay contiene legittimamente `kind: SecretStore`
+        # e `kind: ExternalSecret`, di cui "kind: Secret" e' prefisso. Un
+        # assertNotIn su sottostringa fallirebbe su manifest corretti e, cosa
+        # peggiore, spingerebbe a rimuovere il controllo invece di precisarlo.
+        rendered_kinds = {
+            line.strip() for line in self.rendered.splitlines() if line.startswith("kind:")
+        }
+        self.assertNotIn("kind: Secret", rendered_kinds)
         forbidden_fragments = (
             "password: admin",
             "password: password",

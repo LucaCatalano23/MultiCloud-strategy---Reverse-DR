@@ -7,8 +7,9 @@ Questo overlay aggiunge al cluster k3s on-prem **esistente** un data plane Helio
 - `helios-desk` contiene React, BFF, ticket service e automation service. I quattro Deployment partono con `replicas: 0`.
 - `helios-identity` contiene Keycloak e un PostgreSQL dedicato, entrambi con una replica. L'identita resta warm perche il failover non puo cambiare DNS prima che login, realm e JWKS siano disponibili.
 - Il database Keycloak e separato dal database applicativo. Il restore dei ticket puo quindi ricreare lo schema applicativo senza cancellare realm, client, ruoli o credenziali.
-- Il PostgreSQL applicativo resta quello ripristinato dalla procedura DR esistente. Il Secret `helios-app-database` contiene il suo `DATABASE_URL`; nella PoC punta all'istanza `postgres.helpdesk.svc.cluster.local:5432`, ma **a un database dedicato `helios`, non al database legacy `helpdesk`**. Quel database ospita il monolite legacy e contiene gia una tabella `tickets` con schema diverso (id `bigint`, senza `assignee`/`service`/`environment`/`created_by`/`updated_at`); poiche le migrazioni correnti usano `CREATE TABLE IF NOT EXISTS`, riusare `helpdesk` lascia lo schema legacy invariato e la creazione ticket fallisce con HTTP 500 (mostrato come 502 dal BFF). `create-secrets.sh` rifiuta esplicitamente un `HELIOS_DATABASE_URL` che punta a `helpdesk` (vedi CLAUDE.md §1, le due generazioni non vanno confuse).
+- Il PostgreSQL applicativo resta quello ripristinato dalla procedura DR esistente. Il Secret `helios-app-database` contiene il suo `DATABASE_URL`; nella PoC punta all'istanza `postgres.helpdesk.svc.cluster.local:5432`, ma **a un database dedicato `helios`, non al database legacy `helpdesk`**. Quel database ospita il monolite legacy e contiene gia una tabella `tickets` con schema diverso (id `bigint`, senza `assignee`/`service`/`environment`/`created_by`/`updated_at`); poiche le migrazioni correnti usano `CREATE TABLE IF NOT EXISTS`, riusare `helpdesk` lascia lo schema legacy invariato e la creazione ticket fallisce con HTTP 500 (mostrato come 502 dal BFF). `infra/vault/scripts/seed-secrets.sh` rifiuta esplicitamente un `HELIOS_DATABASE_URL` che punta a `helpdesk` (vedi CLAUDE.md §1, le due generazioni non vanno confuse).
 - Lo schema applicativo non viene creato dai container all'avvio (i Dockerfile non eseguono migrazioni). Va applicato esplicitamente al database dedicato con `scripts/apply-migrations.sh`, che lancia un Job effimero `postgres:16-alpine` alimentato dal Secret `helios-app-database`. Le migrazioni sono idempotenti (`CREATE TABLE IF NOT EXISTS`), quindi lo script e sicuro da rieseguire. Il Job e coperto dalla NetworkPolicy `db-migrate-egress` (solo DNS + PostgreSQL applicativo, nessun Ingress).
+- Fra le migrazioni c'e `002_dr_telemetry.sql`, che crea la tabella `dr_telemetry`: e la fonte delle metriche RPO/RTO mostrate in dashboard. La scrive chi esegue l'operazione (CronJob di backup lato cloud, `record-dr-telemetry.sh` invocato da `failover.yml` lato on-prem) e la legge il BFF. Se la migrazione non viene applicata, i due writer falliscono e la dashboard mostra "Mai misurato" invece di un numero inventato.
 - Il browser parla soltanto con React e BFF sullo stesso origin. Ticket e automation sono `ClusterIP`; nessun token viene consegnato al frontend.
 - Keycloak usa l'immagine ufficiale in production mode, TLS terminato da Traefik, import di realm al primo avvio e storage PostgreSQL persistente. `KC_CACHE=local` e intenzionale per il cluster k3s a nodo singolo; prima di scalare Keycloak a piu repliche va introdotta una configurazione cache/HA supportata.
 
@@ -56,7 +57,11 @@ Il secret di cifratura sessione on-prem deve essere diverso da quello cloud. Dop
 
 Servono record DNS per `helpdesk.azienda.lan` e `auth.azienda.lan`; il secondo punta sempre al k3s on-prem. I certificati devono includere gli hostname corrispondenti. Non sono presenti manifest `Secret` versionati.
 
-Lo script `scripts/create-secrets.sh` legge valori dall'ambiente, usa file temporanei con `umask 077` e riconcilia i Secret con `kubectl create --dry-run=client | kubectl apply`. Richiede:
+I Secret **non sono piu' creati direttamente nel cluster**: la fonte di verita' del sito DR e' OpenBao sul nodo `vault-openbao`, e nel cluster li materializza External Secrets Operator a partire da `secrets/external-secrets.yaml`. E' lo stesso meccanismo del sito primario, dove il backend e' AWS Secrets Manager: i Deployment non cambiano fra i due siti perche' il contratto e' il **nome** del Secret, non la sua origine. Dettagli, layout dei percorsi KV e limiti dichiarati in [`../vault/README.md`](../vault/README.md).
+
+Prerequisiti nel cluster: External Secrets Operator installato, e OpenBao raggiungibile e dissigillato. `deploy-onprem-standby.sh` verifica entrambi e si ferma se mancano.
+
+Lo script `../vault/scripts/seed-secrets.sh` scrive i segreti in OpenBao leggendo i valori dall'ambiente, con `umask 077` sui file temporanei e senza mai esporre il token in `argv`. Richiede:
 
 - `KEYCLOAK_DB_PASSWORD`, `KEYCLOAK_ADMIN_USERNAME`, `KEYCLOAK_ADMIN_PASSWORD`;
 - `HELIOS_BFF_CLIENT_SECRET` e una `HELIOS_SESSION_ENCRYPTION_KEY` Fernet;
@@ -66,12 +71,12 @@ Lo script `scripts/create-secrets.sh` legge valori dall'ambiente, usa file tempo
 
 Una coppia wildcard puo essere fornita una sola volta con `HELIOS_TLS_CERT_FILE` e `HELIOS_TLS_KEY_FILE`. I file e i valori reali restano fuori da Git.
 
-`HELIOS_DATABASE_URL` deve puntare a un database **dedicato** (es. `.../helios`), distinto dal database legacy `helpdesk`; `create-secrets.sh` rifiuta il nome `helpdesk`. Il database va creato una volta sul server applicativo, ad esempio `CREATE DATABASE helios OWNER <ruolo_app>;`.
+`HELIOS_DATABASE_URL` deve puntare a un database **dedicato** (es. `.../helios`), distinto dal database legacy `helpdesk`; `seed-secrets.sh` rifiuta il nome `helpdesk`. Il database va creato una volta sul server applicativo, ad esempio `CREATE DATABASE helios OWNER <ruolo_app>;`.
 
 ```bash
 cd automazione/infra/onprem
-bash scripts/create-secrets.sh
-kubectl apply -k .
+bash ../vault/scripts/seed-secrets.sh   # scrive in OpenBao, non nel cluster
+kubectl apply -k .                      # ExternalSecret -> Secret materializzati da ESO
 bash scripts/apply-migrations.sh   # applica lo schema al database dedicato (idempotente)
 kubectl -n helios-identity rollout status statefulset/keycloak-postgres --timeout=300s
 kubectl -n helios-identity rollout status deployment/keycloak --timeout=300s
@@ -100,9 +105,16 @@ Una nuova esecuzione riconcilia lo stesso utente e non crea duplicati. Un broker
 4. `DR_ACTIVE=true` sui workload configurati;
 5. configurazione esplicita del BFF su Keycloak, scala e attende ticket, automation, BFF e web;
 6. canary `/health/ready` attraverso il Service BFF;
-7. solo alla fine aggiorna il DNS autorevole.
+7. aggiorna il DNS autorevole;
+8. registra la durata misurata del failover come metrica `failover.last_promotion`.
 
-La lista e configurabile con `helios_dr_workloads` / `HELIOS_DR_WORKLOADS`. Il rescue riporta i Deployment a `DR_ACTIVE=false` e `replicas: 0`. Se l'overlay Helios non e ancora installato, gli script conservano il percorso legacy `helpdesk-api`.
+Il passo 8 non puo far fallire un failover gia riuscito: se il database non e
+raggiungibile lo step viene marcato non-fatale e il playbook stampa un avviso
+esplicito, cosi la dashboard mostra "Mai misurato" invece di un RTO falso. Il
+cronometro parte prima del passo 1 e si ferma dopo il passo 7: l'RTO misurato non
+include il tempo di rilevamento del guasto.
+
+La lista e configurabile con `helios_dr_workloads` / `HELIOS_DR_WORKLOADS`. Il rescue riporta i Deployment a `DR_ACTIVE=false` e `replicas: 0`. Se l'overlay Helios non e ancora installato la promozione **fallisce esplicitamente**: il monolite `helpdesk-api` e il suo percorso di compatibilita sono stati rimossi, quindi non esiste piu' un fallback che farebbe risultare riuscita una promozione senza applicazione.
 
 `scripts/deploy/deploy-onprem-standby.sh` applica anche questo overlay al k3s esistente, verifica che i Secret siano gia presenti, lascia Keycloak warm e forza i quattro workload applicativi a zero.
 

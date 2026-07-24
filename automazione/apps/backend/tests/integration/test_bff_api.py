@@ -98,6 +98,34 @@ class FailingTicketClient:
         return True
 
 
+class StubAutomationClient:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+        self._error = error
+
+    async def run_ticket_automation(
+        self, access_token: str, event: dict[str, Any]
+    ) -> dict[str, Any]:
+        if self._error:
+            raise self._error
+        self.calls.append((access_token, event))
+        return {
+            "data": {
+                "id": "run-1",
+                "sourceEventId": event["eventId"],
+                "provider": "aws-lambda",
+                "status": "succeeded",
+                "result": {"runtime": "aws-lambda-cloud"},
+                "errorCode": None,
+                "createdAt": "2026-07-24T10:00:00+00:00",
+                "updatedAt": "2026-07-24T10:00:01+00:00",
+            }
+        }
+
+    async def ping(self) -> bool:
+        return True
+
+
 class StubPlatformProbe:
     async def status(self) -> dict[str, str]:
         return {"ticketService": "ready", "automationService": "ready"}
@@ -114,6 +142,7 @@ def test_bff_session_contract_never_exposes_tokens() -> None:
     app = create_app(
         auth=StubBrowserAuth(authenticated=True),
         tickets=StubTicketClient(),
+        automation=StubAutomationClient(),
         platform=StubPlatformProbe(),
         site=SITE,
     )
@@ -140,6 +169,7 @@ def test_bff_login_sets_secure_state_cookie_and_redirects() -> None:
     app = create_app(
         auth=StubBrowserAuth(),
         tickets=StubTicketClient(),
+        automation=StubAutomationClient(),
         platform=StubPlatformProbe(),
         site=SITE,
     )
@@ -162,6 +192,7 @@ def test_bff_ticket_proxy_uses_server_side_token_and_fails_closed_without_sessio
     app = create_app(
         auth=StubBrowserAuth(authenticated=True),
         tickets=ticket_client,
+        automation=StubAutomationClient(),
         platform=StubPlatformProbe(),
         site=SITE,
     )
@@ -182,6 +213,7 @@ def test_bff_logout_forwards_double_submit_values_and_clears_cookies() -> None:
     app = create_app(
         auth=auth,
         tickets=StubTicketClient(),
+        automation=StubAutomationClient(),
         platform=StubPlatformProbe(),
         site=SITE,
     )
@@ -213,6 +245,7 @@ def test_bff_proxies_update_and_delete_with_server_side_token() -> None:
     app = create_app(
         auth=StubBrowserAuth(authenticated=True),
         tickets=ticket_client,
+        automation=StubAutomationClient(),
         platform=StubPlatformProbe(),
         site=SITE,
     )
@@ -237,6 +270,7 @@ def test_bff_delete_maps_upstream_not_found_to_404() -> None:
     app = create_app(
         auth=StubBrowserAuth(authenticated=True),
         tickets=FailingTicketClient(UpstreamStatusError(404, "missing")),
+        automation=StubAutomationClient(),
         platform=StubPlatformProbe(),
         site=SITE,
     )
@@ -254,6 +288,7 @@ def test_bff_surfaces_upstream_client_status_instead_of_opaque_502() -> None:
     app = create_app(
         auth=StubBrowserAuth(authenticated=True),
         tickets=FailingTicketClient(UpstreamStatusError(403, "denied")),
+        automation=StubAutomationClient(),
         platform=StubPlatformProbe(),
         site=SITE,
     )
@@ -274,6 +309,7 @@ def test_bff_keeps_502_for_transport_failure() -> None:
     app = create_app(
         auth=StubBrowserAuth(authenticated=True),
         tickets=FailingTicketClient(UpstreamServiceError("ticket service request failed")),
+        automation=StubAutomationClient(),
         platform=StubPlatformProbe(),
         site=SITE,
     )
@@ -291,6 +327,7 @@ def test_bff_maps_unlisted_upstream_status_to_502() -> None:
     app = create_app(
         auth=StubBrowserAuth(authenticated=True),
         tickets=FailingTicketClient(UpstreamStatusError(500, "boom")),
+        automation=StubAutomationClient(),
         platform=StubPlatformProbe(),
         site=SITE,
     )
@@ -298,6 +335,109 @@ def test_bff_maps_unlisted_upstream_status_to_502() -> None:
     with TestClient(app, base_url="https://desk.example.test") as client:
         client.cookies.set("__Host-helios_session", "opaque-session")
         response = client.post("/api/v1/tickets", json=VALID_TICKET_PAYLOAD)
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "upstream_unavailable"
+
+
+@pytest.mark.integration
+def test_bff_runs_ticket_automation_and_reports_the_executing_provider() -> None:
+    # Arrange
+    automation = StubAutomationClient()
+    app = create_app(
+        auth=StubBrowserAuth(authenticated=True),
+        tickets=StubTicketClient(),
+        automation=automation,
+        platform=StubPlatformProbe(),
+        site=SITE,
+    )
+
+    # Act
+    with TestClient(app, base_url="https://desk.example.test") as client:
+        client.cookies.set("__Host-helios_session", "opaque-session")
+        client.cookies.set("__Host-helios_csrf", "csrf-token")
+        response = client.post(
+            "/api/v1/tickets/ticket-1/automation",
+            headers={"X-CSRF-Token": "csrf-token"},
+        )
+
+    # Assert: il BFF non sceglie il runtime, lo riporta.
+    assert response.status_code == 202
+    assert response.json()["data"]["provider"] == "aws-lambda"
+
+    access_token, event = automation.calls[0]
+    assert access_token == "server-side-access-token"
+    assert event["eventType"] == "helios.automation.requested.v1"
+    assert event["aggregateId"] == "ticket-1"
+    assert event["data"]["ticket"]["id"] == "ticket-1"
+
+
+@pytest.mark.integration
+def test_bff_rejects_ticket_automation_without_a_matching_csrf_token() -> None:
+    automation = StubAutomationClient()
+    app = create_app(
+        auth=StubBrowserAuth(authenticated=True),
+        tickets=StubTicketClient(),
+        automation=automation,
+        platform=StubPlatformProbe(),
+        site=SITE,
+    )
+
+    with TestClient(app, base_url="https://desk.example.test") as client:
+        client.cookies.set("__Host-helios_session", "opaque-session")
+        client.cookies.set("__Host-helios_csrf", "csrf-token")
+        missing_header = client.post("/api/v1/tickets/ticket-1/automation")
+        mismatched = client.post(
+            "/api/v1/tickets/ticket-1/automation",
+            headers={"X-CSRF-Token": "attacker-token"},
+        )
+
+    assert missing_header.status_code == 403
+    assert mismatched.status_code == 403
+    assert automation.calls == []
+
+
+@pytest.mark.integration
+def test_bff_refuses_ticket_automation_without_a_session() -> None:
+    automation = StubAutomationClient()
+    app = create_app(
+        auth=StubBrowserAuth(authenticated=False),
+        tickets=StubTicketClient(),
+        automation=automation,
+        platform=StubPlatformProbe(),
+        site=SITE,
+    )
+
+    with TestClient(app, base_url="https://desk.example.test") as client:
+        client.cookies.set("__Host-helios_csrf", "csrf-token")
+        response = client.post(
+            "/api/v1/tickets/ticket-1/automation",
+            headers={"X-CSRF-Token": "csrf-token"},
+        )
+
+    assert response.status_code == 401
+    assert automation.calls == []
+
+
+@pytest.mark.integration
+def test_bff_maps_automation_upstream_failure_to_502() -> None:
+    app = create_app(
+        auth=StubBrowserAuth(authenticated=True),
+        tickets=StubTicketClient(),
+        automation=StubAutomationClient(
+            UpstreamServiceError("automation service request failed")
+        ),
+        platform=StubPlatformProbe(),
+        site=SITE,
+    )
+
+    with TestClient(app, base_url="https://desk.example.test") as client:
+        client.cookies.set("__Host-helios_session", "opaque-session")
+        client.cookies.set("__Host-helios_csrf", "csrf-token")
+        response = client.post(
+            "/api/v1/tickets/ticket-1/automation",
+            headers={"X-CSRF-Token": "csrf-token"},
+        )
 
     assert response.status_code == 502
     assert response.json()["error"]["code"] == "upstream_unavailable"

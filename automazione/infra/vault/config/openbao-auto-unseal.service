@@ -1,0 +1,37 @@
+# Dissigilla OpenBao automaticamente dopo un riavvio del nodo.
+#
+# Installato solo da `enable-auto-unseal.sh`, mai da `install-openbao.sh`:
+# abilitarlo e' una decisione di sicurezza esplicita, non un default.
+#
+# Costo dichiarato: le chiavi Shamir vivono su /etc/openbao/unseal/keys, cioe'
+# sullo stesso disco che contiene lo storage cifrato. Chi ottiene il filesystem
+# del nodo ottiene sia il lucchetto sia la chiave. Vedi README.md, sezione
+# "Auto-unseal".
+[Unit]
+Description=Unseal OpenBao after boot
+After=openbao.service
+Requires=openbao.service
+# Senza questo, un OpenBao che non parte lascerebbe l'unit in retry infinito.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# L'attesa del listener evita la corsa fra l'avvio del servizio e l'unseal.
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do curl -sf --cacert /etc/openbao/tls/tls.crt https://127.0.0.1:8200/v1/sys/health -o /dev/null -w "%{http_code}" | grep -qE "200|429|503" && exit 0; sleep 2; done; exit 1'
+ExecStart=/usr/local/sbin/openbao-auto-unseal
+Restart=on-failure
+RestartSec=10
+
+# Il servizio legge materiale di sigillo: nessun accesso oltre lo stretto
+# necessario, e nessuna scrittura sul filesystem.
+User=root
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ReadOnlyPaths=/etc/openbao
+
+[Install]
+WantedBy=multi-user.target

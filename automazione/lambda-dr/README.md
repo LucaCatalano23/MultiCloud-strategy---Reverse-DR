@@ -7,6 +7,7 @@ This module demonstrates an AWS Lambda compatible execution path for Disaster Re
 ## Architecture
 
 - `lambda-image/`: universal Lambda container image. On AWS it delegates to `/lambda-entrypoint.sh`; on-premises it wraps the same entrypoint with `aws-lambda-rie`.
+- `kubernetes/helpdesk-ticket-processor.yaml`: the DR side of the function invoked from the dashboard. Its ConfigMap is a **generated copy** of `automazione/apps/functions/ticket-processor/handler.py` — never edit the inline code by hand, run `python automazione/apps/functions/ticket-processor/sync-onprem-configmap.py` instead. `automazione/tests/deployment-contract.ps1` fails when the two copies diverge. See that function's README for the full request path.
 - `event-adapter/`: FastAPI middleware that converts generic HTTP traffic into an API Gateway Proxy Integration event and invokes the RIE endpoint.
 - `docker-compose.yml`: hardened local orchestration with read-only roots, `/tmp` tmpfs, memory limits, dropped capabilities, and file-based secrets.
 - `kubernetes/`: Kubernetes data-plane example. The adapter stays online and resolves functions by service name, while each Lambda function runs in its own isolated Deployment.

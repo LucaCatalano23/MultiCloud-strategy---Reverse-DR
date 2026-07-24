@@ -77,11 +77,49 @@ export interface RecentActivity {
   readonly occurredAt: string
 }
 
+export type DrMetricStatus = 'ok' | 'warning' | 'critical' | 'unknown'
+
+/**
+ * Metriche DR misurate, non configurate.
+ *
+ * `ageSeconds`/`durationSeconds` sono `null` quando la misura non esiste
+ * ancora (nessun backup registrato, nessun failover mai eseguito): la UI deve
+ * mostrare "non disponibile", mai un placeholder numerico che sembrerebbe un
+ * dato reale.
+ */
+export interface BackupMetric {
+  readonly lastSuccessAt: string | null
+  readonly ageSeconds: number | null
+  readonly targetSeconds: number
+  readonly status: DrMetricStatus
+}
+
+export interface FailoverMetric {
+  readonly lastPromotionAt: string | null
+  readonly durationSeconds: number | null
+  readonly targetSeconds: number
+  readonly status: DrMetricStatus
+}
+
+export interface DrMetrics {
+  readonly backup: BackupMetric
+  readonly failover: FailoverMetric
+}
+
 export interface PlatformStatus {
   readonly services: readonly PlatformService[]
-  readonly rpoMinutes: number
-  readonly rpoTargetMinutes: number
+  readonly dr: DrMetrics
   readonly activities: readonly RecentActivity[]
+}
+
+/** Esito dell'esecuzione della function di piattaforma su un ticket. */
+export interface AutomationRun {
+  readonly id: string
+  readonly provider: string
+  readonly status: 'running' | 'succeeded' | 'failed'
+  readonly errorCode: string | null
+  readonly result: Readonly<Record<string, unknown>>
+  readonly updatedAt: string
 }
 
 export interface TicketFilters {

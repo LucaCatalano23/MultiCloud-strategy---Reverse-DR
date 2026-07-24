@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - namespaces.yaml
+  - secrets/external-secrets.yaml
   - identity/postgres.yaml
   - identity/keycloak.yaml
   - identity/ingress.yaml

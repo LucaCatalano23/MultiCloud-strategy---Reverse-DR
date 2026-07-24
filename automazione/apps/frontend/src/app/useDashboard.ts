@@ -101,5 +101,12 @@ export function useDashboard(gateway: HeliosGateway) {
     [gateway],
   )
 
-  return { state, reload: load, createTicket, updateTicket, deleteTicket }
+  // L'esecuzione della function non modifica il ticket: l'esito viene mostrato
+  // dal drawer che l'ha richiesta, quindi qui non c'è stato da aggiornare.
+  const runTicketAutomation = useCallback(
+    (id: string) => gateway.runTicketAutomation(id),
+    [gateway],
+  )
+
+  return { state, reload: load, createTicket, updateTicket, deleteTicket, runTicketAutomation }
 }

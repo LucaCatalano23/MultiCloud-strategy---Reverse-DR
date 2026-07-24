@@ -303,6 +303,22 @@
   --health-color: var(--color-red);
 }
 
+/* Metrica mai registrata: deve leggersi come assenza di dato, non come esito
+   negativo, quindi resta neutra invece di usare il rosso di "unavailable". */
+.health--unknown {
+  --health-color: var(--color-subtle);
+}
+
+.platform-item--metric strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.platform-item--metric .metric-note {
+  display: block;
+  color: var(--color-subtle);
+  font-size: 9px;
+}
+
 .activity-panel {
   flex: 1;
 }

@@ -35,6 +35,73 @@
       }
     ]
   },
+  "automation": {
+    "function": "helpdesk-ticket-processor",
+    "source": "apps/functions/ticket-processor/handler.py",
+    "trigger": "POST /api/v1/tickets/{ticketId}/automation",
+    "runtimes": {
+      "primary": {
+        "mode": "aws-lambda",
+        "provider": "aws-lambda",
+        "runtime": "aws-lambda-cloud",
+        "artifact": "ecr-container-image"
+      },
+      "dr": {
+        "mode": "lambda-dr",
+        "provider": "lambda-dr",
+        "runtime": "lambda-rie-onprem",
+        "artifact": "configmap-mounted-source"
+      }
+    }
+  },
+  "secrets": {
+    "consumption": "external-secrets-operator",
+    "note": "Stesso meccanismo di consumo su entrambi i siti: cambia solo il backend, non i manifest dei workload.",
+    "primary": {
+      "backend": "aws-secrets-manager",
+      "auth": "irsa-service-account",
+      "granularity": "per-workload",
+      "manifest": "infra/aws/kubernetes/external-secrets.yaml"
+    },
+    "dr": {
+      "backend": "openbao",
+      "node": "vault-openbao",
+      "address": "https://vault.azienda.lan:8200",
+      "auth": "kubernetes-service-account",
+      "granularity": "per-namespace",
+      "kvMount": "helios",
+      "sealMode": "shamir",
+      "autoUnseal": "systemd-local-keys",
+      "autoUnsealActivation": "explicit-opt-in",
+      "manifest": "infra/onprem/secrets/external-secrets.yaml"
+    },
+    "materializedSecrets": [
+      "helios-desk/helios-app-database",
+      "helios-desk/helios-bff-runtime",
+      "helios-desk/helios-app-tls",
+      "helios-identity/keycloak-postgres",
+      "helios-identity/keycloak-bootstrap-admin",
+      "helios-identity/helios-bff-oidc",
+      "helios-identity/helios-dr-operator",
+      "helios-identity/helios-identity-tls"
+    ]
+  },
+  "observability": {
+    "drMetrics": [
+      {
+        "metric": "backup.last_success",
+        "producer": "infra/aws/kubernetes/backup-cronjob.yaml",
+        "meaning": "rpo"
+      },
+      {
+        "metric": "failover.last_promotion",
+        "producer": "helpdesk-dr/ansible/playbooks/failover.yml",
+        "meaning": "rto"
+      }
+    ],
+    "store": "dr_telemetry",
+    "reader": "helios-bff GET /api/v1/platform/status"
+  },
   "identity": {
     "primary": {
       "provider": "entra-id",

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import logging
 from contextlib import AbstractAsyncContextManager
+from hmac import compare_digest
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Callable, Literal, Protocol
 
 from fastapi import FastAPI, Header, Query, Request, Response
@@ -15,8 +17,9 @@ from helios_bff.application.auth_service import (
     OAuthFlowError,
     SessionError,
 )
-from helios_bff.application.ports import PlatformProbe, TicketClient
+from helios_bff.application.ports import AutomationClient, PlatformProbe, TicketClient
 from helios_bff.infrastructure.service_clients import UpstreamServiceError, UpstreamStatusError
+from helios_shared.events import EventEnvelope
 from helios_shared.http import ApiProblem, install_error_handlers
 from helios_ticket_service.domain.models import TicketPriority, TicketStatus
 
@@ -101,6 +104,7 @@ def create_app(
     *,
     auth: BrowserAuth,
     tickets: TicketClient,
+    automation: AutomationClient,
     platform: PlatformProbe,
     site: BffSite,
     lifespan: Lifespan | None = None,
@@ -257,6 +261,37 @@ def create_app(
         await tickets.delete_ticket(access_token, ticket_id)
         return Response(status_code=204)
 
+    @app.post("/api/v1/tickets/{ticket_id}/automation", status_code=202)
+    async def run_ticket_automation(
+        request: Request,
+        ticket_id: str,
+        csrf_header: str | None = Header(default=None, alias="X-CSRF-Token"),
+    ) -> dict[str, Any]:
+        """Esegue la function di piattaforma associata a un ticket.
+
+        Il BFF non sceglie il runtime: costruisce l'evento e lo consegna
+        all'automation service, che nel sito primario lo esegue su AWS Lambda e
+        nel sito DR sullo stesso handler servito da lambda-dr/RIE. La differenza
+        e' una scelta di deployment (`AUTOMATION_MODE`), non un branch di codice,
+        ed e' esattamente cio' che la risposta rende visibile in dashboard.
+        """
+        _require_csrf(request, csrf_header)
+        principal, access_token = await _session_context(auth, request)
+        ticket = await tickets.get_ticket(access_token, ticket_id)
+        payload = ticket.get("data")
+        if not isinstance(payload, dict):
+            raise ApiProblem(502, "upstream_unavailable", "A dependent service is unavailable")
+
+        event = EventEnvelope.create(
+            event_type="helios.automation.requested.v1",
+            aggregate_type="ticket",
+            aggregate_id=ticket_id,
+            subject=principal.subject,
+            occurred_at=datetime.now(UTC),
+            data={"ticket": payload},
+        )
+        return await automation.run_ticket_automation(access_token, event.to_dict())
+
     @app.get("/api/v1/platform/status")
     async def platform_status() -> dict[str, Any]:
         return await platform.status()
@@ -264,11 +299,33 @@ def create_app(
     return app
 
 
+def _require_csrf(request: Request, csrf_header: str | None) -> None:
+    """Double-submit esplicito su un'azione con effetto esterno.
+
+    Le mutazioni sui ticket si affidano al solo cookie di sessione `SameSite=lax`,
+    che gia' blocca una POST cross-site. Qui la verifica e' esplicita perche'
+    l'operazione esce dal perimetro applicativo e fa partire un'invocazione
+    Lambda: il costo di un controllo in piu' e' trascurabile rispetto a una
+    invocazione indotta da terzi.
+    """
+    csrf_cookie = request.cookies.get(CSRF_COOKIE)
+    if not csrf_cookie or not csrf_header or not compare_digest(csrf_cookie, csrf_header):
+        raise ApiProblem(403, "csrf_validation_failed", "CSRF validation failed")
+
+
 async def _session_access_token(auth: BrowserAuth, request: Request) -> str:
+    _, access_token = await _session_context(auth, request)
+    return access_token
+
+
+async def _session_context(auth: BrowserAuth, request: Request) -> tuple[Any, str]:
     session_cookie = request.cookies.get(SESSION_COOKIE)
-    if not session_cookie or await auth.get_principal(session_cookie) is None:
+    if not session_cookie:
         raise ApiProblem(401, "unauthenticated", "Authentication required")
-    return await auth.get_access_token(session_cookie)
+    principal = await auth.get_principal(session_cookie)
+    if principal is None:
+        raise ApiProblem(401, "unauthenticated", "Authentication required")
+    return principal, await auth.get_access_token(session_cookie)
 
 
 def _principal_to_user(principal: Any) -> dict[str, Any]:

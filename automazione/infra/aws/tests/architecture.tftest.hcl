@@ -77,8 +77,8 @@ run "poc_keeps_compute_and_data_in_primary_az" {
   }
 
   assert {
-    condition     = toset(keys(module.ecr.repository_urls)) == toset(["frontend", "bff", "ticket", "automation"])
-    error_message = "All four deployable services require an ECR repository."
+    condition     = toset(keys(module.ecr.repository_urls)) == toset(["frontend", "bff", "ticket", "automation", "ticket-processor"])
+    error_message = "The four deployable services and the ticket-processor function image each require an ECR repository."
   }
 }
 

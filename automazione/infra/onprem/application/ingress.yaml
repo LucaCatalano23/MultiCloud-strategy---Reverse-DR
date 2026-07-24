@@ -6,7 +6,7 @@ metadata:
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     # No explicit router.priority: Traefik auto-computes priority per rule from
-    # match specificity, so /api, /health and /dr-status naturally outrank the
+    # match specificity, so /api and /health naturally outrank the
     # catch-all "/" rule within this same Ingress. Forcing a single priority
     # value applies it uniformly to every rule in the object, which collapses
     # that specificity ordering and made "/" win non-deterministically for
@@ -35,13 +35,8 @@ spec:
                 name: helios-bff
                 port:
                   name: http
-          - path: /dr-status
-            pathType: Exact
-            backend:
-              service:
-                name: helios-bff
-                port:
-                  name: http
+          # /dr-status era l'endpoint del monolite rimosso: instradarlo verso il
+          # BFF produrrebbe solo un 404. Il sito attivo si legge da /api/v1/session.
           - path: /
             pathType: Prefix
             backend:

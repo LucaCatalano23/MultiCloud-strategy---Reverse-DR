@@ -11,15 +11,9 @@ flowchart LR
   internet["Internet / rete esterna"]
 
   subgraph cloudnet["cloud-net 10.20.0.0/24"]
-    cloudk3s["cloud-k3s\n10.20.0.10\nK3s primario"]
-    clouding["Traefik Ingress\nhelpdesk.azienda.lan\n10.20.0.10"]
-    cloudapi["Pod helpdesk-api\nsite_role=primary\n/health/ready always"]
-    cloudpg["Pod postgres\nDB helpdesk"]
+    cloudk3s["cloud-k3s\n10.20.0.10\nK3s primario\ndata plane, nessuna app"]
     cloudbackup["Backup SQL\n/srv/helpdesk-backups"]
-    cloudk3s --> clouding
-    clouding --> cloudapi
-    cloudapi --> cloudpg
-    cloudpg --> cloudbackup
+    cloudk3s --> cloudbackup
   end
 
   subgraph transit["lab-transit 10.10.4.0/24"]
@@ -45,13 +39,14 @@ flowchart LR
     keycloak["proxy-keycloak\n10.10.3.50"]
     egress["egress-proxy\n10.10.3.60"]
     git["git-server\n10.10.3.70\nbare repo helpdesk-dr.git"]
+    vault["vault-openbao\n10.10.3.80\nOpenBao, segreti del sito DR"]
     ansible["ansible-node\n10.10.3.100\nAnsible + DR controller"]
     onpreming["Traefik Ingress\nhelpdesk.azienda.lan\n10.10.3.10"]
-    onpremapi["Pod helpdesk-api\nsite_role=standby\n/health/ready DR_ACTIVE"]
-    onprempg["Pod postgres\nDB restored da backup"]
+    onpremapp["Workload Helios\nweb / bff / ticket / automation\nreplicas 0 a riposo"]
+    onprempg["Pod postgres\nDB helios restored da backup"]
     onpremk3s --> onpreming
-    onpreming --> onpremapi
-    onpremapi --> onprempg
+    onpreming --> onpremapp
+    onpremapp --> onprempg
   end
 
   internet <--> redge
@@ -67,15 +62,18 @@ flowchart LR
   rdc --> rdmz
   onpremk3s --> rdc
   git --> rdc
+  vault --> rdc
   ansible --> rdc
   keycloak --> rdc
   egress --> rdc
   dns --> rdmz
 
+  onpremk3s -. "External Secrets legge i segreti DR" .-> vault
   ansible -. "publish source of truth" .-> git
   ansible -. "backup / restore / failover scripts" .-> cloudk3s
   ansible -. "restore + promote" .-> onpremk3s
-  dns -. "helpdesk.azienda.lan -> cloud or on-prem" .-> clouding
+  ansible -. "preflight: vault dissigillato" .-> vault
+  dns -. "normal mode -> cloud" .-> cloudk3s
   dns -. "DR cutover" .-> onpreming
 ```
 
@@ -104,6 +102,7 @@ flowchart LR
 | `proxy-keycloak` | Ubuntu | `eth0 10.10.3.50` | nodo previsto per proxy/autenticazione |
 | `egress-proxy` | Ubuntu | `eth0 10.10.3.60` | nodo previsto per egress applicativo |
 | `git-server` | Ubuntu | `eth0 10.10.3.70` | repository bare `helpdesk-dr.git`, `git-daemon` |
+| `vault-openbao` | Ubuntu | `eth0 10.10.3.80` | OpenBao, vault manager dei segreti del sito DR |
 | `ansible-node` | Ubuntu | `eth0 10.10.3.100` | Ansible, runbook DR, controller DR |
 | `cloud-k3s` | Ubuntu + k3s | `eth0 10.20.0.10` | cluster Kubernetes primario cloud simulato |
 
@@ -112,27 +111,31 @@ flowchart LR
 ```mermaid
 flowchart TB
   subgraph cloud["Cluster cloud-k3s 10.20.0.10"]
-    cing["Ingress Traefik\nhost helpdesk.azienda.lan"]
-    csvc["Service helpdesk-api:80"]
-    capi["Deployment helpdesk-api\nimage python:3.12-slim\nuvicorn :8080\nSITE_ROLE=primary\nDR_READY_POLICY=always"]
-    cpgsvc["Service postgres:5432"]
-    cpg["Deployment postgres\nimage postgres:16-alpine\nPVC postgres-data 2Gi"]
-    cing --> csvc --> capi --> cpgsvc --> cpg
+    cdp["Data plane Kubernetes\nnessun workload applicativo\nfailure domain del drill"]
   end
 
   subgraph onprem["Cluster k3s-datacenter 10.10.3.10"]
     oing["Ingress Traefik\nhost helpdesk.azienda.lan"]
-    osvc["Service helpdesk-api:80"]
-    oapi["Deployment helpdesk-api\nSITE_ROLE=standby\nDR_READY_POLICY=flag\nready solo con DR_ACTIVE=true"]
+    oweb["Deployment helios-web :8080\nreplicas 0 a riposo"]
+    obff["Deployment helios-bff :8000\nSITE_MODE=dr in DR"]
+    osvcs["helios-ticket-service :8001\nhelios-automation-service :8002\nClusterIP"]
     opgsvc["Service postgres:5432"]
-    opg["Deployment postgres\nPVC postgres-data 2Gi\nrestore da backup"]
-    oing --> osvc --> oapi --> opgsvc --> opg
+    opg["Deployment postgres\nPVC postgres-data 2Gi\ndatabase helios restored"]
+    oing --> oweb
+    oing --> obff
+    obff --> osvcs
+    osvcs --> opgsvc --> opg
   end
 
   dns["server-dns 10.10.2.53\nhelpdesk.azienda.lan"]
-  dns -. "normal mode -> 10.20.0.10" .-> cing
+  dns -. "normal mode -> 10.20.0.10" .-> cdp
   dns -. "DR mode -> 10.10.3.10" .-> oing
 ```
+
+Il monolite `helpdesk-api`, unica applicazione della prima versione della PoC, e'
+stato rimosso: l'applicazione e' ora Helios, e il sito primario reale e' AWS EKS
+(`automazione/infra/aws`). `cloud-k3s` resta come dominio di guasto spegnibile
+nel drill, senza workload applicativi.
 
 ## Flusso normale
 
@@ -142,20 +145,25 @@ sequenceDiagram
   participant DNS as server-dns 10.10.2.53
   participant DMZ as router-dmz 10.10.2.4
   participant Edge as router-edge 10.10.4.2
-  participant Cloud as cloud-k3s 10.20.0.10
-  participant App as helpdesk-api primary
-  participant DB as postgres primary
+  participant Cloud as sito primario (AWS EKS)
+  participant App as helios-web / helios-bff
+  participant DB as RDS PostgreSQL
 
   Client->>DNS: resolve helpdesk.azienda.lan
-  DNS-->>Client: A 10.20.0.10 in normal mode
-  Client->>DMZ: HTTP verso helpdesk
-  DMZ->>Edge: uscita verso cloud simulato/esterno
+  DNS-->>Client: A del sito primario in normal mode
+  Client->>DMZ: HTTPS verso helpdesk
+  DMZ->>Edge: uscita verso il cloud
   Edge->>Cloud: traffico outbound
-  Cloud->>App: Ingress Traefik -> Service
-  App->>DB: query ticket/helpdesk
+  Cloud->>App: ALB same-origin -> web e /api -> bff
+  App->>DB: query ticket
   DB-->>App: dati
   App-->>Client: risposta applicativa
 ```
+
+In laboratorio `cloud-k3s` non serve piu' questo flusso: dopo la rimozione del
+monolite ospita solo il data plane Kubernetes usato come dominio di guasto. Il
+percorso applicativo primario reale e' quello AWS descritto in
+`automazione/infra/aws`.
 
 ## Flusso DR automatico
 

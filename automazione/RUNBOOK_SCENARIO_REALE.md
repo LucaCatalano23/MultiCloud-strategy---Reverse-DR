@@ -32,8 +32,22 @@ flowchart LR
 **Cloud-primary-via-LocalStack dismesso.** Questa PoC simulava in precedenza le API AWS (EKS/S3/IAM/Lambda) del sito cloud tramite LocalStack. La simulazione e' stata rimossa: il progetto non simula piu' l'infrastruttura AWS via LocalStack. La copertura AWS reale (EKS, S3, IAM, Lambda) resta quella della generazione corrente (`automazione/infra/aws`). Di conseguenza:
 
 - `cloud-k3s` resta il data plane Kubernetes EKS-like, ma non c'e' piu' un control plane AWS simulato dietro di esso;
-- il modo `AUTOMATION_MODE=aws-lambda` del primary richiede `AWS_ENDPOINT_URL` (vedi `automazione/helpdesk-dr/app/automation.py`): senza LocalStack questa variabile non viene piu' impostata dal manifest cloud, quindi l'automazione lato primary fallisce esplicitamente finche' non viene ricollegata a un endpoint Lambda reale o a un altro emulatore;
-- il backup periodico cloud -> S3 e il relativo mirror on-prem, prima automatizzati via LocalStack S3, sono stati rimossi: il restore on-prem (`scripts/restore/restore-onprem.sh`, invariato) richiede un backup gia' presente in `BACKUP_MIRROR_DIR` su `ansible-node`, da produrre e copiare manualmente.
+- il backup periodico cloud -> S3 e il relativo mirror on-prem, prima automatizzati via LocalStack S3, sono stati rimossi: il restore on-prem (`scripts/restore/restore-onprem.sh`) richiede un backup gia' presente in `BACKUP_MIRROR_DIR` su `ansible-node`, da produrre e copiare manualmente.
+
+**Monolite `helpdesk-api` rimosso.** L'applicazione della prima versione della PoC
+(un monolite FastAPI senza frontend) e' stata eliminata insieme al suo overlay
+cloud, all'immagine di build e all'endpoint `/dr-status`. L'unica applicazione e'
+ora Helios (`automazione/apps`, `automazione/infra/onprem`), e le verifiche
+funzionali passano dal BFF su `/api/v1`. Di conseguenza:
+
+- su `cloud-k3s` non gira piu' alcun workload applicativo: resta il data plane
+  Kubernetes come dominio di guasto spegnibile dal drill, e `dr-controller.sh` lo
+  sonda tramite `/readyz` dell'API server invece che via HTTP applicativo;
+- `AUTOMATION_MODE` resta il selettore del runtime della function, ma vive ora in
+  `helios-automation-service`: `aws-lambda` sul primario AWS reale, `lambda-dr`
+  sul sito DR (vedi `automazione/apps/functions/ticket-processor/README.md`);
+- la promozione on-prem fallisce esplicitamente se l'overlay Helios non e'
+  installato, invece di ricadere su un'applicazione legacy inesistente.
 
 ## Ordine di provisioning
 
@@ -42,6 +56,15 @@ Tutti i comandi seguenti vanno eseguiti da Ubuntu WSL nella root del repository.
 ### 1. Rete on-prem
 
 ```bash
+# 1. Imposta la policy FORWARD su ACCEPT ed abilita il traffico su lxdbr0
+sudo iptables -P FORWARD ACCEPT
+sudo iptables -I FORWARD -i lxdbr0 -j ACCEPT
+sudo iptables -I FORWARD -o lxdbr0 -j ACCEPT
+
+# 2. Verifica la connettività da dentro il container
+lxc exec server-dns -- ping -c 2 8.8.8.8
+
+# se non si fanno i comandi precedenti non si riesce a fare il setup
 cd automazione/lxc-lab
 bash setup.sh
 bash healthcheck.sh
@@ -61,17 +84,29 @@ cd ../..
 
 Il cluster `cloud-k3s` rappresenta il data plane Kubernetes cloud: i nodi ricevono label di regione, availability zone, instance type e `reverse-dr.io/eks-simulator=true`.
 
-### 3. Workload cloud e runtime on-prem
+### 3. Runtime lambda-dr e standby on-prem
 
 ```bash
-cd automazione/helpdesk-dr
-bash scripts/deploy/build-helpdesk-image.sh
-bash scripts/deploy/deploy-cloud-primary.sh
+cd automazione/infra/onprem
+bash ../vault/scripts/seed-secrets.sh
+# Auto-unseal: opt-in, richiede OPENBAO_UNSEAL_KEYS e la conferma esplicita
+# OPENBAO_ACCEPT_AUTO_UNSEAL_RISK=yes. Vedi ../vault/README.md.
+bash ../vault/scripts/enable-auto-unseal.sh
+
+cd ../../helpdesk-dr
 bash scripts/deploy/deploy-lambda-onprem.sh
 bash scripts/deploy/deploy-onprem-standby.sh
+
+cd ../infra/onprem
+bash scripts/apply-migrations.sh
+bash scripts/provision-dr-operator.sh
 ```
 
-Il primary usa `AUTOMATION_MODE=aws-lambda`; lo standby usa `AUTOMATION_MODE=lambda-dr`. La selezione avviene via configurazione Kubernetes, non con branching nella logica applicativa. Con LocalStack rimosso, il percorso `aws-lambda` del primary non ha piu' un endpoint configurato di default (vedi nota in "Obiettivo").
+Non esiste piu' un passo di deploy del workload cloud: il monolite e' stato
+rimosso e il sito primario reale e' AWS EKS. Lo standby usa
+`AUTOMATION_MODE=lambda-dr`, il primario `AUTOMATION_MODE=aws-lambda`: la
+selezione avviene via configurazione Kubernetes, non con branching nella logica
+applicativa.
 
 ### 4. Rendere Ansible il coordinatore DR
 
@@ -90,29 +125,16 @@ Prima del drill, copia manualmente un backup verificato (`helpdesk-<timestamp>.s
 
 ## Verifica funzionale prima del DR
 
-Crea un ticket dal client aziendale:
+Le API sono ora dietro il BFF, che richiede una sessione browser (cookie
+`__Host-*` + CSRF): la verifica si fa dalla dashboard, non con `curl` anonimo.
 
-```bash
-ticket_id="$(lxc exec pc-dipendente1 -- curl -fsS \
-  -H 'content-type: application/json' \
-  -d '{"title":"Test Lambda cloud","description":"Verifica percorso cloud","priority":"normal"}' \
-  http://helpdesk.azienda.lan/tickets | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
-```
+1. Apri `https://helpdesk.azienda.lan/` dal client aziendale e autenticati.
+2. Crea un ticket dalla dashboard.
+3. Aprilo, e nel pannello "Automazione ticket" premi **Esegui**.
 
-Invoca l'automazione:
-
-```bash
-lxc exec pc-dipendente1 -- curl -fsS -X POST \
-  "http://helpdesk.azienda.lan/tickets/${ticket_id}/automation"
-```
-
-Prima del DR la risposta deve includere:
-
-```json
-{"provider":"aws-lambda","runtime":"aws-lambda-cloud"}
-```
-
-Questa chiamata richiede che `AWS_ENDPOINT_URL` sia configurato per il primary (vedi nota in "Obiettivo"); senza LocalStack va puntato a un endpoint Lambda reale o a un altro emulatore AWS a scelta.
+Prima del DR il pannello deve mostrare `aws-lambda` come esecutore e
+`aws-lambda-cloud` come runtime. La colonna operativa mostra inoltre RPO e RTO
+misurati; se non è mai stato eseguito un failover, l'RTO è "Mai misurato".
 
 ## Disaster recovery drill
 
@@ -138,30 +160,60 @@ Questa prova funziona solo se il mirror on-prem contiene gia' un backup verifica
 
 ```bash
 bash scripts/poc/ansible-run.sh poc/healthcheck
-lxc exec pc-dipendente1 -- curl -fsS http://helpdesk.azienda.lan/dr-status
-lxc exec pc-dipendente1 -- curl -fsS -X POST \
-  "http://helpdesk.azienda.lan/tickets/${ticket_id}/automation"
 ```
 
-La seconda invocazione deve includere:
+Poi, dalla dashboard (nuova autenticazione, questa volta su Keycloak):
 
-```json
-{"provider":"lambda-dr","runtime":"lambda-rie-onprem"}
-```
+1. `GET /api/v1/session` riporta `site.mode = dr` e `site.identityProvider = keycloak`;
+   in UI l'intestazione mostra il sito DR.
+2. Rilancia **Esegui** sullo stesso ticket: il pannello deve ora mostrare
+   `lambda-dr` come esecutore e `lambda-rie-onprem` come runtime — stessa
+   function, runtime diverso.
+3. La colonna operativa mostra l'RTO appena misurato dal playbook.
+
+L'endpoint `/dr-status` del monolite non esiste piu': il sito attivo si legge da
+`/api/v1/session`.
 
 ## RPO e RTO misurabili
 
-- RPO: dipende dall'eta' dell'ultimo backup copiato manualmente in `BACKUP_MIRROR_DIR` su `ansible-node` (il backup automatico cloud -> S3 -> mirror e' stato rimosso insieme a LocalStack);
-- RTO: restore PostgreSQL + rollout/readiness + aggiornamento DNS;
-- TTL DNS: 30 secondi.
+Le due metriche non sono piu' dichiarate a mano: vengono **scritte da chi esegue
+l'operazione** nella tabella `dr_telemetry` del database applicativo, lette dal
+BFF su `GET /api/v1/platform/status` e mostrate nella colonna operativa della
+dashboard.
+
+| Metrica | Chi la scrive | Che cosa misura | Obiettivo di default |
+|---|---|---|---|
+| `backup.last_success` | CronJob `helios-postgres-backup` dopo l'upload S3 | eta' dell'ultimo backup completato = RPO | 900 s (`RPO_TARGET_SECONDS`) |
+| `failover.last_promotion` | `failover.yml` via `scripts/failover/record-dr-telemetry.sh` | durata dell'orchestrazione di failover = RTO | 1800 s (`RTO_TARGET_SECONDS`) |
+
+Cosa comprende l'RTO misurato: restore PostgreSQL, preflight identita', rollout e
+readiness dei workload, aggiornamento DNS. Cosa **non** comprende: il tempo di
+rilevamento del guasto, perche' il cronometro parte quando il playbook parte. La
+dashboard lo dichiara esplicitamente sotto la metrica.
+
+Se una metrica non e' mai stata registrata, l'API e la UI mostrano `unknown` /
+"Mai misurato": e' l'esito onesto, non un valore di comodo. TTL DNS: 30 secondi.
+
+La tabella `dr_telemetry` viene creata da
+`apps/backend/services/bff/migrations/002_dr_telemetry.sql`, applicata insieme
+alle altre migrazioni da `infra/onprem/scripts/apply-migrations.sh`. Senza quella
+migrazione i due writer falliscono e la dashboard resta a "Mai misurato".
+
+Nota sull'RPO in questa PoC: la metrica misura correttamente l'eta' dell'ultimo
+backup **prodotto sul primario**, ma il trasporto del backup verso il mirror
+on-prem resta manuale (vedi "Limiti dichiarati"). L'RPO mostrato e' quindi un
+limite inferiore del RPO reale del sito DR finche' il trasporto non e' automatico.
 
 Per un RPO on-prem stringente occorre reintrodurre un meccanismo di backup/sync periodico (verso AWS reale o altro storage), sostituendo il polling manuale con replica S3 cross-region/event-driven oppure streaming WAL continuo. La PoC attuale privilegia leggibilità e verificabilità del processo di restore/failover, non l'automazione del trasporto del backup.
 
 ## Limiti dichiarati
 
-- Il control plane AWS simulato via LocalStack e' stato rimosso: `cloud-k3s` resta il data plane Kubernetes EKS-like, ma senza un emulatore AWS dietro. Il primary in modalita' `AUTOMATION_MODE=aws-lambda` fallisce esplicitamente finche' `AWS_ENDPOINT_URL` non viene ricollegato a un endpoint Lambda reale o a un altro emulatore.
+- Il control plane AWS simulato via LocalStack e' stato rimosso: `cloud-k3s` resta il data plane Kubernetes EKS-like, ma senza un emulatore AWS dietro e, dopo la rimozione del monolite, senza workload applicativi. Il percorso `AUTOMATION_MODE=aws-lambda` e' quindi verificabile solo sul primario AWS reale, non in laboratorio.
+- Il drill spegne `cloud-k3s`, cioe' il dominio di guasto del *lab*, non il sito primario AWS: la parte di failover che il laboratorio dimostra e' la promozione on-prem, non l'indisponibilita' di EKS.
 - Il backup periodico cloud -> S3 e il mirror automatico on-prem sono stati rimossi insieme a LocalStack: il popolamento di `BACKUP_MIRROR_DIR` e' oggi manuale.
 - `cloud-k3s` e `k3s-datacenter` sono cluster mononodo.
 - PostgreSQL usa dump/restore, non replica WAL o managed RDS.
 - Il cutback resta manuale perché manca la replica dei dati modificati durante il periodo DR verso il primary.
+- La metrica RPO misura l'eta' dell'ultimo backup prodotto sul primario, non l'eta' del backup effettivamente disponibile on-prem: finche' il trasporto verso `BACKUP_MIRROR_DIR` e' manuale, il RPO reale del sito DR puo' essere peggiore di quello mostrato.
+- La metrica RTO copre solo la durata del playbook: il tempo di rilevamento del guasto (intervallo di polling di `dr-controller.sh` per la soglia di fallimenti) va sommato a parte per ottenere l'RTO percepito dall'utente.
 - I container k3s LXD privilegiati sono una concessione del laboratorio, non una configurazione production.

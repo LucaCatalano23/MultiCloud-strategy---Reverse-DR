@@ -6,13 +6,15 @@ Questo testo descrive i nodi della PoC dal punto di vista funzionale: software p
 
 `cloud-k3s` rappresenta il sito primario in cloud. E una macchina Ubuntu con k3s installato, quindi ospita un cluster Kubernetes mononodo.
 
-Su questo nodo girano i servizi primari dell'applicazione helpdesk:
+Il monolite `helpdesk-api` che girava su questo nodo e' stato rimosso, insieme al
+suo overlay Kustomize e agli script di build e deploy. Il sito primario reale
+della generazione corrente e' AWS EKS (`automazione/infra/aws`), quindi su
+`cloud-k3s` resta:
 
-- Ingress controller Traefik, usato per esporre HTTP il servizio `helpdesk.azienda.lan`.
-- Deployment `helpdesk-api`, cioe l'applicazione helpdesk.
-- Deployment `postgres`, cioe il database primario dell'applicazione.
-- Service Kubernetes `helpdesk-api`, che porta il traffico HTTP dal cluster verso il pod applicativo.
-- Service Kubernetes `postgres`, usato dall'applicazione per raggiungere il database.
+- Ingress controller Traefik, non piu' associato ad alcun backend applicativo.
+- Il data plane Kubernetes mononodo, usato come **dominio di guasto** spegnibile
+  durante il drill (`lxc stop cloud-k3s`) e sondato da `dr-controller.sh`
+  attraverso l'endpoint `/readyz` dell'API server.
 - Backup SQL periodici o manuali in `/srv/helpdesk-backups`.
 
 Il suo indirizzo principale e `10.20.0.10`. In stato normale il DNS aziendale risolve:
@@ -35,13 +37,15 @@ In modalita primaria la readiness e sempre abilitata se applicazione e database 
 
 `k3s-datacenter` rappresenta il sito secondario on-premise. E una macchina Ubuntu con k3s installato e ospita il cluster Kubernetes di disaster recovery.
 
-Su questo nodo girano gli stessi componenti applicativi presenti nel cloud:
+Su questo nodo gira l'applicazione Helios, unica applicazione della PoC dopo la
+rimozione del monolite:
 
 - Ingress controller Traefik.
-- Deployment `helpdesk-api`.
-- Deployment `postgres`.
-- Service `helpdesk-api`.
-- Service `postgres`.
+- Deployment `helios-web`, `helios-bff`, `helios-ticket-service`,
+  `helios-automation-service` (namespace `helios-desk`, `replicas: 0` a riposo).
+- Keycloak e il suo PostgreSQL dedicato (namespace `helios-identity`), warm.
+- Deployment `postgres` e Service `postgres` (namespace `helpdesk`), che ospitano
+  il database applicativo dedicato `helios`.
 - PVC `postgres-data` per i dati del database.
 
 Il suo indirizzo principale e `10.10.3.10`.
@@ -303,20 +307,39 @@ Nel progetto attuale non e ancora integrato nel flusso principale dell'helpdesk,
 - integrazione OIDC/SAML;
 - protezione degli endpoint applicativi.
 
-In una versione piu completa dell'architettura, il traffico verso l'applicazione potrebbe passare da un proxy autenticato prima di raggiungere `helpdesk-api`.
+Nella generazione corrente questo ruolo e' svolto da Keycloak dentro il cluster on-prem (namespace `helios-identity`): il BFF valida i token e il browser non riceve mai un access token.
+
+## `vault-openbao`
+
+`vault-openbao` (10.10.3.80) ospita OpenBao, il vault manager dei segreti del
+sito DR. E' l'equivalente on-premise di AWS Secrets Manager sul sito primario.
+
+Perche' e' un nodo e non un workload del cluster: il vault custodisce le
+credenziali di `k3s-datacenter`, quindi non deve vivere dentro il cluster che
+protegge. Un rebuild del cluster non deve portarsi via il materiale
+crittografico, e il perimetro di fiducia resta separato.
+
+Nel cluster nessun pod parla direttamente con OpenBao: lo fa External Secrets
+Operator, che materializza Secret Kubernetes con gli stessi nomi usati sul sito
+primario. I Deployment sono percio' identici nei due siti.
+
+OpenBao e' tenuto sempre acceso e dissigillato, come Keycloak: il playbook di
+failover verifica questa condizione prima di spostare il DNS, perche' un vault
+sigillato impedirebbe ai pod di leggere le proprie credenziali. Dettagli e
+limiti in [`infra/vault/README.md`](infra/vault/README.md).
 
 ## Comunicazione tra i nodi
 
 Il flusso principale in normal mode e:
 
 ```text
-client interno -> DNS aziendale -> helpdesk.azienda.lan -> cloud-k3s -> helpdesk-api -> postgres cloud
+client interno -> DNS aziendale -> helpdesk.azienda.lan -> sito primario AWS -> helios-web / helios-bff -> RDS PostgreSQL
 ```
 
 Il flusso principale in DR mode e:
 
 ```text
-client interno -> DNS aziendale -> helpdesk.azienda.lan -> k3s-datacenter -> helpdesk-api -> postgres on-prem
+client interno -> DNS aziendale -> helpdesk.azienda.lan -> k3s-datacenter -> helios-web / helios-bff -> postgres on-prem (database helios)
 ```
 
 Il flusso operativo di backup e restore e (il tratto cloud-k3s -> mirror ansible-node era automatizzato via LocalStack S3 ed e' oggi manuale, vedi [`RUNBOOK_SCENARIO_REALE.md`](RUNBOOK_SCENARIO_REALE.md)):

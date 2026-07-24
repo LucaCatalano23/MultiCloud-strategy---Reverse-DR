@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, Mapping, Protocol
+from typing import Any, Mapping, Protocol, Sequence
 
 from helios_bff.domain.auth import BrowserSession, OAuthTransaction, TokenSet
+from helios_bff.domain.telemetry import DrTelemetryRecord
 
 
 class AuthStore(Protocol):
@@ -47,6 +48,18 @@ class TicketClient(Protocol):
     async def delete_ticket(self, access_token: str, ticket_id: str) -> None: ...
 
     async def ping(self) -> bool: ...
+
+
+class AutomationClient(Protocol):
+    async def run_ticket_automation(
+        self, access_token: str, event: Mapping[str, Any]
+    ) -> dict[str, Any]: ...
+
+    async def ping(self) -> bool: ...
+
+
+class DrTelemetryStore(Protocol):
+    async def read(self, metrics: Sequence[str]) -> Mapping[str, DrTelemetryRecord]: ...
 
 
 class PlatformProbe(Protocol):

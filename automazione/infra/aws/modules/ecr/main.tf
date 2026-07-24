@@ -1,5 +1,9 @@
 locals {
-  services = toset(["frontend", "bff", "ticket", "automation"])
+  # `ticket-processor` non e' un servizio EKS: e' l'immagine container della
+  # function eseguita da AWS Lambda nel sito primario e dallo stesso runtime RIE
+  # sotto lambda-dr nel sito DR. Ha bisogno di un repository proprio perche' il
+  # suo ciclo di vita e' quello della function, non quello dei microservizi.
+  services = toset(["frontend", "bff", "ticket", "automation", "ticket-processor"])
 }
 
 resource "aws_ecr_repository" "service" {

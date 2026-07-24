@@ -1,7 +1,7 @@
-import { Check, Pencil, Trash2, X } from 'lucide-react'
+import { Bot, Check, Pencil, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { formatUpdatedAt } from '../../domain/presentation'
-import type { Ticket } from '../../domain/types'
+import type { AutomationRun, Ticket } from '../../domain/types'
 import { PriorityBadge, StatusBadge } from './Badges'
 
 type DetailTab = 'details' | 'activity'
@@ -11,6 +11,7 @@ interface TicketDrawerProps {
   readonly onClose: () => void
   readonly onEdit: () => void
   readonly onDelete: () => Promise<void>
+  readonly onRunAutomation: () => Promise<AutomationRun>
 }
 
 // Solo le sezioni con una fonte dati reale nel contratto Ticket. Allegati,
@@ -21,18 +22,43 @@ const tabs = [
   { id: 'activity' as const, label: 'Attività' },
 ]
 
-export function TicketDrawer({ ticket, onClose, onEdit, onDelete }: TicketDrawerProps) {
+export function TicketDrawer({
+  ticket,
+  onClose,
+  onEdit,
+  onDelete,
+  onRunAutomation,
+}: TicketDrawerProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>('details')
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
+  const [running, setRunning] = useState(false)
+  const [automationError, setAutomationError] = useState('')
+  const [lastRun, setLastRun] = useState<AutomationRun | null>(null)
 
   useEffect(() => {
     setActiveTab('details')
     setConfirmingDelete(false)
     setDeleting(false)
     setError('')
+    setRunning(false)
+    setAutomationError('')
+    setLastRun(null)
   }, [ticket.id])
+
+  const handleRunAutomation = () => {
+    setRunning(true)
+    setAutomationError('')
+    void onRunAutomation()
+      .then((run) => setLastRun(run))
+      .catch((reason: unknown) => {
+        setAutomationError(
+          reason instanceof Error ? reason.message : 'Esecuzione automazione non riuscita',
+        )
+      })
+      .finally(() => setRunning(false))
+  }
 
   const handleDelete = () => {
     setDeleting(true)
@@ -85,6 +111,66 @@ export function TicketDrawer({ ticket, onClose, onEdit, onDelete }: TicketDrawer
         {activeTab === 'details' ? <DetailContent ticket={ticket} /> : null}
         {activeTab === 'activity' ? <TimelineContent ticket={ticket} /> : null}
       </div>
+
+      <section className="drawer-automation" aria-label="Automazione di piattaforma">
+        <div className="drawer-automation__header">
+          <div>
+            <strong>Automazione ticket</strong>
+            {/* Il testo dichiara esplicitamente che il runtime dipende dal sito
+                attivo: è il punto che la PoC vuole rendere osservabile. */}
+            <span>
+              Esegue <code>helpdesk-ticket-processor</code> su AWS Lambda nel sito primario,
+              su lambda-dr durante il DR.
+            </span>
+          </div>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={handleRunAutomation}
+            disabled={running}
+          >
+            <Bot size={15} aria-hidden="true" />
+            {running ? 'Esecuzione…' : 'Esegui'}
+          </button>
+        </div>
+
+        {automationError ? (
+          <p className="form-error" role="alert">
+            {automationError}
+          </p>
+        ) : null}
+
+        {lastRun ? (
+          <dl className="automation-result">
+            <div>
+              <dt>Esito</dt>
+              <dd>{lastRun.status === 'succeeded' ? 'Completata' : lastRun.status === 'failed' ? 'Fallita' : 'In corso'}</dd>
+            </div>
+            <div>
+              <dt>Eseguita da</dt>
+              <dd>{lastRun.provider}</dd>
+            </div>
+            {typeof lastRun.result.runtime === 'string' ? (
+              <div>
+                <dt>Runtime</dt>
+                <dd>{lastRun.result.runtime}</dd>
+              </div>
+            ) : null}
+            {typeof lastRun.result.classification === 'string' ? (
+              <div>
+                <dt>Classificazione</dt>
+                <dd>{lastRun.result.classification}</dd>
+              </div>
+            ) : null}
+            {lastRun.errorCode ? (
+              <div>
+                <dt>Codice errore</dt>
+                <dd>{lastRun.errorCode}</dd>
+              </div>
+            ) : null}
+          </dl>
+        ) : null}
+      </section>
 
       <footer className="drawer-footer">
         {error ? (

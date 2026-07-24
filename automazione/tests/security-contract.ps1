@@ -14,8 +14,9 @@ if (
 }
 
 $manifestPaths = @(
+    # helpdesk.yaml (monolite legacy) e' stato rimosso insieme all'applicazione:
+    # resta il solo PostgreSQL condiviso, che ospita il database `helios`.
     Join-Path $repositoryRoot 'automazione/helpdesk-dr/manifests/kubernetes/base/postgres.yaml'
-    Join-Path $repositoryRoot 'automazione/helpdesk-dr/manifests/kubernetes/base/helpdesk.yaml'
 )
 
 foreach ($manifestPath in $manifestPaths) {

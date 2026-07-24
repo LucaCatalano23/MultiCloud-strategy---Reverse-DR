@@ -31,7 +31,10 @@ spec:
               type: RuntimeDefault
           containers:
             - name: backup
-              # Must contain compatible pg_dump, gzip/coreutils and AWS CLI v2.
+              # Must contain compatible pg_dump AND psql, gzip/coreutils and AWS
+              # CLI v2. psql is required to publish the RPO metric consumed by
+              # the dashboard: the job that produced the backup is the only
+              # component entitled to state when it actually succeeded.
               image: helios-postgres-backup:cloud-placeholder
               imagePullPolicy: IfNotPresent
               command: ["/bin/sh", "-c"]
@@ -55,6 +58,24 @@ spec:
                   object_prefix="s3://${BACKUP_S3_BUCKET}/postgres/${stamp}"
                   aws s3 cp "$backup_file" "${object_prefix}.dump" --only-show-errors
                   aws s3 cp "$checksum_file" "${object_prefix}.dump.sha256" --only-show-errors
+
+                  # Da qui in poi il backup e' completo e verificabile su S3:
+                  # solo ora ha senso dichiararlo come "ultimo backup riuscito".
+                  # Registrarlo prima dell'upload farebbe misurare un RPO che il
+                  # sito DR non potrebbe realmente rispettare.
+                  psql "$pg_dump_url" -v ON_ERROR_STOP=1 \
+                    -v object="${object_prefix}.dump" <<'SQL'
+                  INSERT INTO dr_telemetry (metric, recorded_at, duration_seconds, detail)
+                  VALUES (
+                    'backup.last_success',
+                    now(),
+                    NULL,
+                    jsonb_build_object('object', :'object', 'site', 'aws-primary')
+                  )
+                  ON CONFLICT (metric) DO UPDATE
+                    SET recorded_at = EXCLUDED.recorded_at,
+                        detail = EXCLUDED.detail;
+                  SQL
                   unset pg_dump_url DATABASE_URL
               envFrom:
                 - configMapRef:

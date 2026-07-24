@@ -14,6 +14,11 @@
       - helios-web
     helios_dr_active_replicas: 1
     helios_dr_standby_replicas: 0
+    # Il repository viene pubblicato in /opt/helpdesk-dr, con `infra/` accanto:
+    # lo script di verifica del vault vive nella generazione corrente.
+    helios_vault_verify_script: ../infra/vault/scripts/verify-openbao.sh
+    helios_vault_addr: https://vault.azienda.lan:8200
+    helios_vault_cacert: ""
     helios_keycloak_issuer: https://auth.azienda.lan/realms/helios-desk
     helios_keycloak_audience: api://reverse-dr-helpdesk
     helios_keycloak_jwks_url: http://keycloak.helios-identity.svc.cluster.local:8080/realms/helios-desk/protocol/openid-connect/certs
@@ -41,6 +46,17 @@
           - dr_state.stdout | trim != "dr"
         fail_msg: "DR mode is already active; no second restore will be attempted."
 
+    # L'RTO pubblicato in dashboard e' misurato, non dichiarato: il cronometro
+    # parte qui e si ferma dopo lo switch DNS. Copre restore + preflight +
+    # promozione + DNS, NON il tempo di rilevamento del guasto.
+    - name: Start the measured failover stopwatch
+      ansible.builtin.command:
+        argv:
+          - date
+          - "+%s"
+      register: helios_failover_started_at
+      changed_when: false
+
   tasks:
     - name: Restore and validate the standby data plane
       block:
@@ -61,6 +77,23 @@
             chdir: "{{ project_root }}"
           changed_when: false
 
+        # Preflight OpenBao PRIMA di scalare i workload e di toccare il DNS: se
+        # il vault e' sigillato o irraggiungibile, External Secrets non riesce a
+        # materializzare i Secret e i pod restano bloccati in
+        # CreateContainerConfigError. Promuovere in quello stato sposterebbe il
+        # traffico su un sito che non puo' servire nulla, quindi qui si fallisce
+        # e il rescue riporta tutto a replicas 0.
+        - name: Verify that OpenBao is reachable and unsealed
+          ansible.builtin.command:
+            argv:
+              - bash
+              - "{{ helios_vault_verify_script }}"
+            chdir: "{{ project_root }}"
+          environment:
+            BAO_ADDR: "{{ helios_vault_addr }}"
+            BAO_CACERT: "{{ helios_vault_cacert | default('', true) }}"
+          changed_when: false
+
         - name: Promote on-prem workloads with Keycloak and switch authoritative DNS
           ansible.builtin.command:
             argv:
@@ -76,6 +109,43 @@
             HELIOS_KEYCLOAK_AUDIENCE: "{{ helios_keycloak_audience }}"
             HELIOS_KEYCLOAK_JWKS_URL: "{{ helios_keycloak_jwks_url }}"
           changed_when: true
+
+        - name: Stop the measured failover stopwatch
+          ansible.builtin.command:
+            argv:
+              - date
+              - "+%s"
+          register: helios_failover_finished_at
+          changed_when: false
+
+        # La registrazione della metrica non deve mai far fallire un failover
+        # gia' riuscito: se il database non e' raggiungibile la dashboard mostra
+        # "non disponibile", che e' l'esito onesto, e il task successivo lo
+        # rende comunque visibile nell'output del playbook.
+        - name: Record the measured failover duration for the dashboard
+          ansible.builtin.command:
+            argv:
+              - bash
+              - scripts/failover/record-dr-telemetry.sh
+              - failover.last_promotion
+              - "{{ (helios_failover_finished_at.stdout | int) - (helios_failover_started_at.stdout | int) }}"
+              - >-
+                {"playbook":"failover.yml","site":"onprem",
+                "scope":"restore+identity-preflight+promotion+dns"}
+            chdir: "{{ project_root }}"
+          environment:
+            HELIOS_DR_NAMESPACE: "{{ helios_dr_namespace }}"
+          register: helios_failover_telemetry
+          changed_when: helios_failover_telemetry.rc == 0
+          failed_when: false
+
+        - name: Warn when the failover duration could not be published
+          ansible.builtin.debug:
+            msg: >-
+              Failover completato ma la metrica RTO non e' stata registrata
+              (rc={{ helios_failover_telemetry.rc }}). La dashboard mostrera'
+              l'RTO come non disponibile.
+          when: helios_failover_telemetry.rc != 0
 
       rescue:
         - name: Keep the on-prem application non-ready after a failed preflight

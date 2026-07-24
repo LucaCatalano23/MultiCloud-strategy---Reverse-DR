@@ -39,7 +39,8 @@ interface AppProps {
 }
 
 export function App({ gateway, runtimeConfig }: AppProps) {
-  const { state, reload, createTicket, updateTicket, deleteTicket } = useDashboard(gateway)
+  const { state, reload, createTicket, updateTicket, deleteTicket, runTicketAutomation } =
+    useDashboard(gateway)
   const [activeSection, setActiveSection] = useState<NavigationKey>('tickets')
   const [filters, setFilters] = useState<TicketFilters>(defaultFilters)
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
@@ -143,6 +144,7 @@ export function App({ gateway, runtimeConfig }: AppProps) {
                     await deleteTicket(selectedTicket.id)
                     setSelectedTicketId(null)
                   }}
+                  onRunAutomation={() => runTicketAutomation(selectedTicket.id)}
                 />
               ) : null}
             </main>

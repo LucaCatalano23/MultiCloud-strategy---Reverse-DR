@@ -41,6 +41,24 @@ export function formatUpdatedAt(value: string, now = new Date()): string {
   return `${italianDate.format(date)}, ${time}`
 }
 
+/**
+ * Durata leggibile per le metriche DR.
+ *
+ * `null` non viene reso come "0": una metrica mai registrata deve dichiararsi
+ * assente, altrimenti un RPO sconosciuto sembrerebbe un RPO perfetto.
+ */
+export function formatDuration(seconds: number | null): string {
+  if (seconds === null) return 'non disponibile'
+  if (seconds < 60) return `${seconds} s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  const remainder = minutes % 60
+  if (hours < 24) return remainder === 0 ? `${hours} h` : `${hours} h ${remainder} min`
+  const days = Math.floor(hours / 24)
+  return `${days} g`
+}
+
 export function userInitials(user: AuthenticatedUser): string {
   const initials = user.displayName
     .trim()

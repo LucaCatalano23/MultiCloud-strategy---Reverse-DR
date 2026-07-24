@@ -1,4 +1,5 @@
 import type {
+  AutomationRun,
   CreateTicketInput,
   PlatformStatus,
   SessionInfo,
@@ -13,6 +14,7 @@ export interface HeliosGateway {
   createTicket(input: CreateTicketInput): Promise<Ticket>
   updateTicket(id: string, input: UpdateTicketInput): Promise<Ticket>
   deleteTicket(id: string): Promise<void>
+  runTicketAutomation(id: string): Promise<AutomationRun>
   logout(): Promise<void>
   getLoginUrl(returnTo: string): string
 }

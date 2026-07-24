@@ -1,4 +1,8 @@
 import type {
+  AutomationRun,
+  BackupMetric,
+  DrMetricStatus,
+  FailoverMetric,
   PlatformServiceStatus,
   PlatformStatus,
   RecentActivity,
@@ -26,6 +30,8 @@ const serviceStatuses = new Set<PlatformServiceStatus>([
   'degraded',
   'unavailable',
 ])
+const drMetricStatuses = new Set<DrMetricStatus>(['ok', 'warning', 'critical', 'unknown'])
+const automationStatuses = new Set<AutomationRun['status']>(['running', 'succeeded', 'failed'])
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -116,12 +122,80 @@ function parseActivity(value: unknown): RecentActivity {
   }
 }
 
+function nullableSeconds(source: Record<string, unknown>, key: string): number | null {
+  const value = source[key]
+  if (value === null) return null
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new Error(`Metrica DR non valida: ${key}`)
+  }
+  return value
+}
+
+function nullableInstant(source: Record<string, unknown>, key: string): string | null {
+  const value = source[key]
+  if (value === null) return null
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`Metrica DR non valida: ${key}`)
+  }
+  return value
+}
+
+function drMetricStatus(source: Record<string, unknown>): DrMetricStatus {
+  const status = source.status
+  if (typeof status !== 'string' || !drMetricStatuses.has(status as DrMetricStatus)) {
+    throw new Error('Stato metrica DR non valido')
+  }
+  return status as DrMetricStatus
+}
+
+function targetSeconds(source: Record<string, unknown>): number {
+  const value = source.targetSeconds
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    throw new Error('Obiettivo metrica DR non valido')
+  }
+  return value
+}
+
+function parseDrMetrics(value: unknown): PlatformStatus['dr'] {
+  if (!isRecord(value) || !isRecord(value.backup) || !isRecord(value.failover)) {
+    throw new Error('Metriche DR BFF non valide')
+  }
+  const backup: BackupMetric = {
+    lastSuccessAt: nullableInstant(value.backup, 'lastSuccessAt'),
+    ageSeconds: nullableSeconds(value.backup, 'ageSeconds'),
+    targetSeconds: targetSeconds(value.backup),
+    status: drMetricStatus(value.backup),
+  }
+  const failover: FailoverMetric = {
+    lastPromotionAt: nullableInstant(value.failover, 'lastPromotionAt'),
+    durationSeconds: nullableSeconds(value.failover, 'durationSeconds'),
+    targetSeconds: targetSeconds(value.failover),
+    status: drMetricStatus(value.failover),
+  }
+  return { backup, failover }
+}
+
+function parseAutomationRun(value: unknown): AutomationRun {
+  if (!isRecord(value)) throw new Error('Esito automazione BFF non valido')
+  const status = value.status
+  if (typeof status !== 'string' || !automationStatuses.has(status as AutomationRun['status'])) {
+    throw new Error('Stato automazione non valido')
+  }
+  return {
+    id: stringField(value, 'id'),
+    provider: stringField(value, 'provider'),
+    status: status as AutomationRun['status'],
+    errorCode: value.errorCode === null || value.errorCode === undefined
+      ? null
+      : stringField(value, 'errorCode'),
+    result: isRecord(value.result) ? value.result : {},
+    updatedAt: stringField(value, 'updatedAt'),
+  }
+}
+
 function parsePlatformStatus(value: unknown): PlatformStatus {
   if (!isRecord(value) || !Array.isArray(value.services) || !Array.isArray(value.activities)) {
     throw new Error('Stato piattaforma BFF non valido')
-  }
-  if (typeof value.rpoMinutes !== 'number' || typeof value.rpoTargetMinutes !== 'number') {
-    throw new Error('RPO BFF non valido')
   }
   const services = value.services.map((service) => {
     if (!isRecord(service)) throw new Error('Servizio piattaforma non valido')
@@ -137,8 +211,7 @@ function parsePlatformStatus(value: unknown): PlatformStatus {
   })
   return {
     services,
-    rpoMinutes: value.rpoMinutes,
-    rpoTargetMinutes: value.rpoTargetMinutes,
+    dr: parseDrMetrics(value.dr),
     activities: value.activities.map(parseActivity),
   }
 }
@@ -244,6 +317,13 @@ export function createBffClient(
       }),
     deleteTicket: (id) =>
       request(`/tickets/${encodeURIComponent(id)}`, () => undefined, { method: 'DELETE' }),
+    runTicketAutomation: (id) =>
+      request(`/tickets/${encodeURIComponent(id)}/automation`, (value) => {
+        if (!isRecord(value) || !('data' in value)) {
+          throw new Error('Envelope automazione non valido')
+        }
+        return parseAutomationRun(value.data)
+      }, { method: 'POST' }),
     logout: () => request('/auth/logout', () => undefined, { method: 'POST' }),
     getLoginUrl: (returnTo) => {
       if (!returnTo.startsWith('/') || returnTo.startsWith('//') || returnTo.includes('\\')) {

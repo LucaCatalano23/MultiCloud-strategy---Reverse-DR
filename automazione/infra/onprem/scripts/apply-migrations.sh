@@ -8,7 +8,7 @@
 # vedi i Dockerfile). Lo schema va quindi applicato esplicitamente a un database
 # dedicato, distinto dal monolite legacy `helpdesk`. Le migrazioni usano
 # CREATE TABLE IF NOT EXISTS, quindi questo script e' idempotente e sicuro da
-# rieseguire. Vedi CLAUDE.md §1 e la guardia in create-secrets.sh.
+# rieseguire. Vedi CLAUDE.md §1 e la guardia in infra/vault/scripts/seed-secrets.sh.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,11 +26,12 @@ PSQL_IMAGE="${PSQL_IMAGE:-postgres:16-alpine}"
 declare -a MIGRATION_FILES=(
   "10-ticket-service=${BACKEND_SERVICES_DIR}/ticket-service/migrations/001_initial.sql"
   "20-bff=${BACKEND_SERVICES_DIR}/bff/migrations/001_initial.sql"
+  "21-bff-dr-telemetry=${BACKEND_SERVICES_DIR}/bff/migrations/002_dr_telemetry.sql"
   "30-automation-service=${BACKEND_SERVICES_DIR}/automation-service/migrations/001_initial.sql"
 )
 
 if ! "${KUBECTL_BIN}" -n "${NAMESPACE}" get secret "${DB_SECRET}" >/dev/null 2>&1; then
-  echo "Secret ${NAMESPACE}/${DB_SECRET} non trovato: esegui prima create-secrets.sh." >&2
+  echo "Secret ${NAMESPACE}/${DB_SECRET} non trovato: e' materializzato da External Secrets a partire da OpenBao (vedi infra/vault/README.md)." >&2
   exit 1
 fi
 
