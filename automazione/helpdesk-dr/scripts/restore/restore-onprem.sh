@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+# Ripristina lo storage del sito DR nel database applicativo Helios.
+#
+# L'applicazione del sito DR e' SEMPRE E SOLO Helios: durante il DR il compute
+# deve essere in esecuzione (lo scala promote-onprem.sh) e lo storage allineato
+# (lo ripristina questo script). Il ripristino avviene quindi nel database
+# `helios`, non nel database legacy `helpdesk`.
+#
+# Formato del backup: pg_dump custom (`.dump`), lo stesso prodotto dal CronJob di
+# backup del primario (infra/aws/kubernetes/backup-cronjob.yaml). Il ripristino
+# usa pg_restore, non psql su SQL plain: e' l'unico formato della catena
+# backup -> mirror -> restore, cosi' produttore e consumatore combaciano.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,16 +18,20 @@ source "${SCRIPT_DIR}/../common/lib.sh"
 
 require_ansible_coordinator
 
+HELIOS_DR_NAMESPACE="${HELIOS_DR_NAMESPACE:-helios-desk}"
+HELIOS_DR_WORKLOADS="${HELIOS_DR_WORKLOADS:-helios-ticket-service helios-automation-service helios-bff helios-web}"
+HELIOS_APP_DB_SECRET="${HELIOS_APP_DB_SECRET:-helios-app-database}"
+
 backup_key="${1:-}"
 mirror_dir="${BACKUP_MIRROR_DIR}/${BACKUP_S3_PREFIX}"
 if [ -z "${backup_key}" ]; then
   if [ -d "${mirror_dir}" ]; then
-    backup_key="$(find "${mirror_dir}" -maxdepth 1 -type f -name 'helpdesk-*.sql.gz' -printf '%T@ %f\n' | sort -nr | head -n 1 | cut -d' ' -f2-)"
+    backup_key="$(find "${mirror_dir}" -maxdepth 1 -type f -name '*.dump' -printf '%T@ %f\n' | sort -nr | head -n 1 | cut -d' ' -f2-)"
   fi
 fi
 
 if [ -z "${backup_key}" ]; then
-  echo "No PostgreSQL backup found in the on-prem mirror ${mirror_dir}." >&2
+  echo "No PostgreSQL custom-format backup (*.dump) found in the on-prem mirror ${mirror_dir}." >&2
   exit 1
 fi
 
@@ -29,7 +44,6 @@ trap 'rm -rf "${restore_dir}"' EXIT
 archive_name="${backup_key##*/}"
 archive_path="${restore_dir}/${archive_name}"
 checksum_path="${archive_path}.sha256"
-sql_path="${restore_dir}/helpdesk-restore.sql"
 
 mirror_archive="${mirror_dir}/${archive_name}"
 mirror_checksum="${mirror_archive}.sha256"
@@ -44,10 +58,9 @@ cp "${mirror_checksum}" "${checksum_path}"
   cd "${restore_dir}"
   sha256sum -c "${archive_name}.sha256"
 )
-gzip -dc "${archive_path}" >"${sql_path}"
 
-if [ ! -s "${sql_path}" ]; then
-  echo "Decompressed restore is empty: ${backup_key}" >&2
+if [ ! -s "${archive_path}" ]; then
+  echo "Restore archive is empty: ${backup_key}" >&2
   exit 1
 fi
 
@@ -57,13 +70,11 @@ fi
 # prima del push. /var/tmp non e' soggetto a pulizia automatica.
 wait_for_k3s "${ONPREM_K3S_NAME}" exec_onprem
 
-lxc_retry file push "${sql_path}" "${ONPREM_K3S_NAME}/var/tmp/helpdesk-restore.sql"
+lxc_retry file push "${archive_path}" "${ONPREM_K3S_NAME}/var/tmp/helios-restore.dump"
 
-# Nessuno deve scrivere sul database mentre lo schema viene ricreato. I workload
-# Helios sono gia' a zero repliche a riposo, ma il restore puo' essere rieseguito
-# dopo una promozione parziale: azzerarli qui rende lo script sicuro da ripetere.
-HELIOS_DR_NAMESPACE="${HELIOS_DR_NAMESPACE:-helios-desk}"
-HELIOS_DR_WORKLOADS="${HELIOS_DR_WORKLOADS:-helios-ticket-service helios-automation-service helios-bff helios-web}"
+# Nessuno deve scrivere sul database mentre viene ripristinato. I workload Helios
+# sono gia' a zero repliche a riposo, ma il restore puo' essere rieseguito dopo
+# una promozione parziale: azzerarli qui rende lo script sicuro da ripetere.
 if exec_onprem kubectl get namespace "${HELIOS_DR_NAMESPACE}" >/dev/null 2>&1; then
   read -r -a helios_workloads <<<"${HELIOS_DR_WORKLOADS}"
   for workload in "${helios_workloads[@]}"; do
@@ -74,13 +85,52 @@ fi
 
 exec_onprem kubectl -n "${APP_NAMESPACE}" rollout status deployment/postgres --timeout=180s
 pod="$(exec_onprem kubectl -n "${APP_NAMESPACE}" get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')"
-exec_onprem sh -lc "kubectl -n ${APP_NAMESPACE} cp /var/tmp/helpdesk-restore.sql ${pod}:/tmp/helpdesk-restore.sql"
-exec_onprem sh -lc "kubectl -n ${APP_NAMESPACE} exec ${pod} -- psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c 'drop schema public cascade; create schema public;'"
-exec_onprem sh -lc "kubectl -n ${APP_NAMESPACE} exec ${pod} -- psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -f /tmp/helpdesk-restore.sql"
 
-# Il dump e' un estratto completo del database in chiaro: non va lasciato sul
-# nodo ne' dentro il pod dopo il restore.
-exec_onprem rm -f /var/tmp/helpdesk-restore.sql
-exec_onprem sh -lc "kubectl -n ${APP_NAMESPACE} exec ${pod} -- rm -f /tmp/helpdesk-restore.sql" || true
+# Il nome del database applicativo e' la fonte di verita' del contratto: viene
+# dal Secret `helios-app-database` (chiave DATABASE_URL), non hardcodato. Cosi'
+# il restore segue sempre il database che l'app usa davvero.
+helios_db="${HELIOS_APP_DB:-}"
+if [ -z "${helios_db}" ]; then
+  db_url="$(exec_onprem kubectl -n "${HELIOS_DR_NAMESPACE}" get secret "${HELIOS_APP_DB_SECRET}" \
+    -o jsonpath='{.data.DATABASE_URL}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+  if [ -n "${db_url}" ]; then
+    helios_db="${db_url##*/}"
+    helios_db="${helios_db%%\?*}"
+  fi
+fi
+helios_db="${helios_db:-helios}"
 
-echo "Restored on-prem from mirrored backup ${mirror_archive}"
+# Guardia coerente con seed-secrets.sh: il sito DR non deve mai ripristinare nel
+# database legacy `helpdesk`, che ha lo schema del monolite rimosso.
+if [ "${helios_db}" = "helpdesk" ] || [ "${helios_db}" = "${POSTGRES_DB}" ]; then
+  echo "Il restore Helios non deve puntare al database legacy '${helios_db}'." >&2
+  exit 1
+fi
+
+exec_onprem sh -lc "kubectl -n ${APP_NAMESPACE} cp /var/tmp/helios-restore.dump ${pod}:/tmp/helios-restore.dump"
+
+# Creazione del database (se manca) e restore in un unico script passato via
+# stdin a `sh -s` nel pod: evita il quoting annidato host -> lxc -> kubectl ->
+# psql, e usa `lxc exec` diretto invece di exec_onprem perche' i retry di
+# lxc_retry consumerebbero lo stdin al primo tentativo. Il container e' gia'
+# avviato (wait_for_k3s piu' sopra), quindi non serve ensure_container_started.
+#
+# pg_restore: --clean --if-exists rende il restore idempotente (droppa gli
+# oggetti esistenti prima di ricrearli, senza errori su un database vuoto);
+# --no-owner/--no-acl perche' i ruoli del primario non esistono necessariamente
+# sul sito DR; --exit-on-error fa fallire il playbook su un restore parziale
+# invece di promuovere un sito con dati incompleti.
+lxc exec "${ONPREM_K3S_NAME}" -- kubectl -n "${APP_NAMESPACE}" exec -i "${pod}" -- sh -s <<EOF
+set -eu
+if ! psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -tAc "SELECT 1 FROM pg_database WHERE datname='${helios_db}'" | grep -q 1; then
+  psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c "CREATE DATABASE ${helios_db} OWNER ${POSTGRES_USER}"
+fi
+pg_restore --clean --if-exists --no-owner --no-acl --exit-on-error -U ${POSTGRES_USER} -d ${helios_db} /tmp/helios-restore.dump
+EOF
+
+# Il dump e' un estratto completo del database: non va lasciato sul nodo ne'
+# dentro il pod dopo il restore.
+exec_onprem rm -f /var/tmp/helios-restore.dump
+exec_onprem sh -lc "kubectl -n ${APP_NAMESPACE} exec ${pod} -- rm -f /tmp/helios-restore.dump" || true
+
+echo "Restored on-prem database '${helios_db}' from mirrored backup ${mirror_archive}"

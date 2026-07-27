@@ -1,0 +1,37 @@
+# Unit systemd di OpenBao, installata da install-openbao.sh dal tarball.
+#
+# La controlliamo interamente noi (invece della unit del pacchetto .deb) cosi'
+# openbao-auto-unseal.service (opt-in) puo' agganciarsi a un nome e a un
+# comportamento noti, e la config resta un solo file: /etc/openbao/openbao.hcl.
+[Unit]
+Description=OpenBao secrets manager (sito DR)
+Documentation=https://openbao.org/docs/
+After=network-online.target
+Wants=network-online.target
+ConditionFileNotEmpty=/etc/openbao/openbao.hcl
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+User=openbao
+Group=openbao
+# `bao server` resta in foreground; systemd ne gestisce il ciclo di vita.
+ExecStart=/usr/local/bin/bao server -config=/etc/openbao/openbao.hcl
+ExecReload=/bin/kill --signal HUP $MAINPID
+KillSignal=SIGINT
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+# Irrigidimento: il processo legge solo la propria config e scrive solo lo
+# storage. mlock e' disabilitato nella config (container LXC senza CAP_IPC_LOCK),
+# quindi non serve la capability corrispondente.
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/openbao
+ReadOnlyPaths=/etc/openbao
+
+[Install]
+WantedBy=multi-user.target

@@ -213,9 +213,12 @@ variable "eks_node_disk_size_gib" {
 }
 
 variable "database_name" {
-  description = "Initial PostgreSQL database name."
+  # Database applicativo Helios. Coerente con il sito DR, dove HELIOS_DATABASE_URL
+  # e restore-onprem.sh usano lo stesso database `helios`, distinto dal database
+  # legacy `helpdesk` del monolite rimosso (vedi CLAUDE.md sezione 1).
+  description = "Initial PostgreSQL database name (Helios application database)."
   type        = string
-  default     = "helpdesk"
+  default     = "helios"
 
   validation {
     condition     = can(regex("^[a-z][a-z0-9_]{0,62}$", var.database_name))

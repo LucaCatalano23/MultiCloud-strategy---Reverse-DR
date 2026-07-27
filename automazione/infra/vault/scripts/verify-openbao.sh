@@ -12,19 +12,20 @@ BAO_ADDR="${BAO_ADDR:-https://vault.azienda.lan:8200}"
 BAO_CACERT="${BAO_CACERT:-}"
 TIMEOUT_SECONDS="${OPENBAO_PREFLIGHT_TIMEOUT:-10}"
 
-curl_args=(--fail --silent --show-error --max-time "${TIMEOUT_SECONDS}")
+# Nessun --fail: lo scopo e' leggere lo status code (anche 4xx/5xx) per
+# distinguere sigillato/non inizializzato/irraggiungibile, non far uscire curl
+# in errore. Aggiungere --fail solo per poi toglierlo con una sostituzione
+# nell'array lascerebbe un argomento vuoto, che curl rifiuta come URL malformato.
+curl_args=(--silent --show-error --max-time "${TIMEOUT_SECONDS}")
 if [ -n "${BAO_CACERT}" ]; then
   curl_args+=(--cacert "${BAO_CACERT}")
 fi
 
 # /v1/sys/health e' l'unico endpoint interrogabile senza autenticazione, ed e'
 # proprio cio' che serve: sapere se il vault e' utilizzabile, non leggerne il
-# contenuto.
-#
-# Codici di stato: 200 inizializzato/dissigillato/attivo, 429 standby,
-# 501 non inizializzato, 503 sigillato. `--fail` scarterebbe tutto tranne 200,
-# quindi lo status va letto esplicitamente per poter distinguere le cause.
-status="$(curl "${curl_args[@]/--fail/}" --output /dev/null --write-out '%{http_code}' \
+# contenuto. Codici: 200 dissigillato/attivo, 429 standby, 501 non inizializzato,
+# 503 sigillato, 000 irraggiungibile (errore di rete/TLS).
+status="$(curl "${curl_args[@]}" --output /dev/null --write-out '%{http_code}' \
   "${BAO_ADDR}/v1/sys/health" || true)"
 
 case "${status}" in

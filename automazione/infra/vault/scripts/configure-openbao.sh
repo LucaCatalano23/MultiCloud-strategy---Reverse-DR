@@ -26,8 +26,22 @@ bao_exec() {
     bao "$@"
 }
 
-echo "Verifica che OpenBao sia dissigillato..."
-bash "${SCRIPT_DIR}/verify-openbao.sh"
+# Preflight sul nodo, via lxc exec (127.0.0.1), non dall'host: questo script
+# gira sull'host, dove `vault.azienda.lan` non risolve ancora. Coerente con il
+# resto di configure-openbao, che parla a OpenBao solo attraverso bao_exec.
+echo "Verifica che OpenBao sia raggiungibile e dissigillato sul nodo..."
+if ! bao_exec status >/dev/null 2>&1; then
+  cat >&2 <<'EOF'
+OpenBao non risulta raggiungibile o e' ancora sigillato sul nodo vault-openbao.
+Esegui prima, una sola volta:
+  lxc exec vault-openbao -- env BAO_ADDR=https://127.0.0.1:8200 \
+    BAO_CACERT=/etc/openbao/tls/tls.crt bao operator init
+poi dissigilla 3 volte:
+  lxc exec vault-openbao -- env BAO_ADDR=https://127.0.0.1:8200 \
+    BAO_CACERT=/etc/openbao/tls/tls.crt bao operator unseal
+EOF
+  exit 1
+fi
 
 echo "Mount KV v2 '${KV_MOUNT}'..."
 if ! bao_exec secrets list -format=json | grep -q "\"${KV_MOUNT}/\""; then

@@ -23,6 +23,7 @@ bash -n \
   "${ONPREM_DIR}/../vault/scripts/install-openbao.sh" \
   "${ONPREM_DIR}/../vault/scripts/verify-openbao.sh" \
   "${ONPREM_DIR}/../vault/scripts/enable-auto-unseal.sh" \
+  "${ONPREM_DIR}/../../apps/scripts/build-helios-images.sh" \
   "${ONPREM_DIR}/scripts/apply-migrations.sh" \
   "${ONPREM_DIR}/scripts/provision-dr-operator.sh" \
   "${ONPREM_DIR}/keycloak/provision/provision-dr-operator.sh" \

@@ -26,7 +26,7 @@ eks_node_desired_size    = 1
 eks_node_max_size        = 2
 eks_node_disk_size_gib   = 30
 
-database_name                      = "helpdesk"
+database_name                      = "helios"
 database_master_username           = "platform_admin"
 database_engine_version            = "16"
 database_instance_class            = "db.t4g.micro"

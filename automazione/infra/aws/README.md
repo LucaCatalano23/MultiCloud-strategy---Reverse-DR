@@ -90,7 +90,7 @@ Shape suggerite, senza valori reali:
 ```json
 {
   "database": {
-    "DATABASE_URL": "postgresql+asyncpg://<restricted-user>:<secret>@<rds-address>:5432/helpdesk?ssl=require"
+    "DATABASE_URL": "postgresql+asyncpg://<restricted-user>:<secret>@<rds-address>:5432/helios?ssl=require"
   },
   "config": {
     "OIDC_CLIENT_SECRET": "<secret>",
