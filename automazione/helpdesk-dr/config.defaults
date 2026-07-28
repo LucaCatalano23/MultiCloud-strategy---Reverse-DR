@@ -14,6 +14,8 @@ DNS_SERVER_IP="10.10.2.53"
 GIT_SERVER_NAME="git-server"
 GIT_SERVER_IP="10.10.3.70"
 ANSIBLE_NODE_NAME="ansible-node"
+VAULT_NODE_NAME="vault-openbao"
+VAULT_NODE_IP="10.10.3.80"
 
 APP_NAMESPACE="helpdesk"
 APP_REPOSITORY_NAME="helpdesk-dr.git"

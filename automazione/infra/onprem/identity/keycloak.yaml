@@ -8,6 +8,12 @@ metadata:
     app.kubernetes.io/component: identity-provider
 spec:
   replicas: 1
+  # Il primo avvio con `start` (non --optimized) esegue il build Quarkus a
+  # runtime (~60-90s) + migrazione DB + import realm; in un container LXC con
+  # risorse limitate puo' superare il default di 600s, soprattutto se c'e' un
+  # restart. Un deadline piu' ampio evita che il deployment sia marcato "failed"
+  # mentre in realta' sta ancora bootando.
+  progressDeadlineSeconds: 1200
   strategy:
     type: Recreate
   selector:

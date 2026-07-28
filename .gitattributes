@@ -1,0 +1,13 @@
+# Gli script di shell DEVONO avere line-ending LF: un CRLF nello shebang o su
+# `set -euo pipefail` rompe l'esecuzione in WSL/Linux con errori oscuri tipo
+# "set: pipefail: invalid option name". Forzare eol=lf impedisce che
+# core.autocrlf su Windows reintroduca i CR al checkout.
+*.sh text eol=lf
+
+# Stesso motivo per gli altri artefatti eseguiti da Linux nel lab/cluster.
+*.yaml text eol=lf
+*.yml text eol=lf
+*.hcl text eol=lf
+*.py text eol=lf
+Dockerfile text eol=lf
+*.service text eol=lf

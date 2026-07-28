@@ -111,6 +111,14 @@ exec_onprem() {
   lxc_retry exec "${ONPREM_K3S_NAME}" -- "$@"
 }
 
+# Comandi sul nodo OpenBao. Il preflight del vault gira qui via 127.0.0.1 con il
+# certificato locale, non da ansible-node/host via rete: cosi' non dipende dalla
+# risoluzione DNS del cluster ne' dalla distribuzione del CA fuori dal nodo.
+exec_vault() {
+  ensure_container_started "${VAULT_NODE_NAME:-vault-openbao}"
+  lxc_retry exec "${VAULT_NODE_NAME:-vault-openbao}" -- "$@"
+}
+
 exec_dns() {
   ensure_container_started "${DNS_SERVER_NAME}"
   lxc_retry exec "${DNS_SERVER_NAME}" -- "$@"

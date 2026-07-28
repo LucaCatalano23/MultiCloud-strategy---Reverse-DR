@@ -16,7 +16,7 @@ exec_git bash -lc "test -d /srv/git/${APP_REPOSITORY_NAME} || git init --bare --
 workdir="$(mktemp -d)"
 trap 'rm -rf "${workdir}"' EXIT
 
-cp -R "${ROOT_DIR}/app" "${workdir}/app"
+# Il monolite `app/` e' stato rimosso: non c'e' piu' nulla da pubblicare li'.
 cp -R "${ROOT_DIR}/ansible" "${workdir}/ansible"
 cp -R "${ROOT_DIR}/manifests" "${workdir}/manifests"
 cp -R "${ROOT_DIR}/scripts" "${workdir}/scripts"
@@ -24,12 +24,19 @@ if [ -d "${ROOT_DIR}/../infra/onprem" ]; then
   mkdir -p "${workdir}/infra"
   cp -R "${ROOT_DIR}/../infra/onprem" "${workdir}/infra/onprem"
 fi
+# infra/vault serve al preflight OpenBao del failover, che gira su ansible-node
+# dal repo pubblicato: senza, il playbook non troverebbe gli script del vault.
+if [ -d "${ROOT_DIR}/../infra/vault" ]; then
+  mkdir -p "${workdir}/infra"
+  cp -R "${ROOT_DIR}/../infra/vault" "${workdir}/infra/vault"
+fi
 if [ -f "${ROOT_DIR}/../contracts/deployment-contract.json" ]; then
   mkdir -p "${workdir}/contracts"
   cp "${ROOT_DIR}/../contracts/deployment-contract.json" "${workdir}/contracts/deployment-contract.json"
 fi
 cp "${ROOT_DIR}/config.defaults" "${workdir}/config.defaults"
-cp "${ROOT_DIR}/config.env.example" "${workdir}/config.env.example"
+# config.env.example e' opzionale: se presente lo si pubblica come template.
+[ -f "${ROOT_DIR}/config.env.example" ] && cp "${ROOT_DIR}/config.env.example" "${workdir}/config.env.example"
 cp "${ROOT_DIR}/README.md" "${workdir}/README.md"
 
 git -C "${workdir}" init --initial-branch=main

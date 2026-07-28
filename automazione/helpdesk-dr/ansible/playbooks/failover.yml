@@ -14,11 +14,10 @@
       - helios-web
     helios_dr_active_replicas: 1
     helios_dr_standby_replicas: 0
-    # Il repository viene pubblicato in /opt/helpdesk-dr, con `infra/` accanto:
-    # lo script di verifica del vault vive nella generazione corrente.
-    helios_vault_verify_script: ../infra/vault/scripts/verify-openbao.sh
-    helios_vault_addr: https://vault.azienda.lan:8200
-    helios_vault_cacert: ""
+    # Il preflight OpenBao gira SUL nodo vault via 127.0.0.1 (cert locale), non
+    # da ansible-node via rete: cosi' non dipende dalla risoluzione DNS ne' dal
+    # CA distribuito fuori dal nodo. ansible-node ha il client lxd verso l'host.
+    helios_vault_node: vault-openbao
     helios_keycloak_issuer: https://auth.azienda.lan/realms/helios-desk
     helios_keycloak_audience: api://reverse-dr-helpdesk
     helios_keycloak_jwks_url: http://keycloak.helios-identity.svc.cluster.local:8080/realms/helios-desk/protocol/openid-connect/certs
@@ -82,16 +81,20 @@
         # materializzare i Secret e i pod restano bloccati in
         # CreateContainerConfigError. Promuovere in quello stato sposterebbe il
         # traffico su un sito che non puo' servire nulla, quindi qui si fallisce
-        # e il rescue riporta tutto a replicas 0.
+        # e il rescue riporta tutto a replicas 0. `bao status` esce 0 se
+        # dissigillato, 2 se sigillato, 1 se irraggiungibile.
         - name: Verify that OpenBao is reachable and unsealed
           ansible.builtin.command:
             argv:
-              - bash
-              - "{{ helios_vault_verify_script }}"
-            chdir: "{{ project_root }}"
-          environment:
-            BAO_ADDR: "{{ helios_vault_addr }}"
-            BAO_CACERT: "{{ helios_vault_cacert | default('', true) }}"
+              - lxc
+              - exec
+              - "{{ helios_vault_node }}"
+              - --
+              - env
+              - BAO_ADDR=https://127.0.0.1:8200
+              - BAO_CACERT=/etc/openbao/tls/tls.crt
+              - /usr/local/bin/bao
+              - status
           changed_when: false
 
         - name: Promote on-prem workloads with Keycloak and switch authoritative DNS

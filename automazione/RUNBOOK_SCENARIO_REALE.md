@@ -211,7 +211,7 @@ lxc exec vault-openbao -- env BAO_ADDR=https://127.0.0.1:8200 \
 Configura mount KV, policy e autenticazione Kubernetes:
 
 ```bash
-export BAO_TOKEN=<root token>
+export BAO_TOKEN=<root token da `bao operator init`, NON committarlo nel repo>
 export OPENBAO_CA_FILE=~/azienda-lan.crt
 bash automazione/infra/vault/scripts/configure-openbao.sh
 ```
@@ -257,7 +257,13 @@ export HELIOS_DATABASE_URL="postgresql+asyncpg://helpdesk:$(python3 -c 'import u
 
 `HELIOS_DATABASE_URL` **deve** finire con `/helios`, non `/helpdesk`: lo script
 rifiuta il database legacy. La password è quella del PostgreSQL del lab
-(`helpdesk-dr/config.env`, `POSTGRES_PASSWORD`).
+(`helpdesk-dr/config.env`, `POSTGRES_PASSWORD`) — **sostituisci il placeholder
+`replace-with-a-random-lab-password`** con un valore reale in `config.env` prima
+del deploy, altrimenti il postgres del lab userà quella stringa come password.
+
+Lo schema dell'URL può essere `postgresql://` o `postgresql+asyncpg://`: i
+servizi normalizzano il prefisso in stile SQLAlchemy prima di passarlo a psycopg
+(vedi `helios_shared/db.py`), quindi entrambi funzionano.
 
 ```bash
 bash automazione/infra/vault/scripts/seed-secrets.sh
@@ -267,7 +273,7 @@ Auto-unseal (opt-in esplicito: hai scelto di attivarlo). Colloca le chiavi sul
 nodo — compromesso dichiarato in `infra/vault/README.md`:
 
 ```bash
-export OPENBAO_UNSEAL_KEYS="<share1> <share2> <share3>"
+export OPENBAO_UNSEAL_KEYS="gbf9xTZ0kMQWPviUC2hopq2fGU+7rfhYTsP6sCp+A4jb 5Z3cUM5FFROv6CN0jJwD3AxuSLZpenzJeUZgXop6rNpJ Z58hQQGNiEw+6jhy4v3FI532ypFfQ5L8DEKBBrDkbeTR"
 export OPENBAO_ACCEPT_AUTO_UNSEAL_RISK=yes
 bash automazione/infra/vault/scripts/enable-auto-unseal.sh
 ```
@@ -302,9 +308,26 @@ Il PostgreSQL del lab (namespace `helpdesk`) è ora attivo. Crea il database
 
 ```bash
 export KUBECONFIG=~/.kube/helios-onprem.yaml
-kubectl -n helpdesk exec deploy/postgres -- \
-  psql -U helpdesk -c "CREATE DATABASE helios OWNER helpdesk;"
+kubectl -n helpdesk exec deploy/postgres -- sh -c \
+  "psql -U helpdesk -tc \"SELECT 1 FROM pg_database WHERE datname='helios'\" | grep -q 1 \
+   || psql -U helpdesk -c 'CREATE DATABASE helios OWNER helpdesk'"
 ```
+
+Il `CREATE` è condizionale: su un DB `helios` già esistente (per esempio dopo un
+drill precedente) `CREATE DATABASE` darebbe `already exists` e, in una catena
+`&&`, interromperebbe i passi successivi.
+
+> **Se hai fatto `kubectl delete namespace helios-desk`** (reset pulito): quel
+> namespace contiene il ServiceAccount `openbao-token-reviewer`, il cui token JWT
+> è memorizzato in OpenBao per la TokenReview. Ricrearlo invalida quel token e i
+> `SecretStore` vanno in `InvalidProviderConfig`, quindi nessun Secret viene
+> materializzato. Riesegui `configure-openbao.sh` (rigenera il token-reviewer)
+> **prima** di questo passo:
+>
+> ```bash
+> export BAO_TOKEN=<root token>; export OPENBAO_CA_FILE=~/azienda-lan.crt
+> bash automazione/infra/vault/scripts/configure-openbao.sh
+> ```
 
 ```bash
 cd automazione/infra/onprem
@@ -390,6 +413,74 @@ Keycloak e verifica:
 
 L'endpoint `/dr-status` del monolite non esiste più: il sito attivo si legge da
 `/api/v1/session`.
+
+### Aprire la dashboard nel browser dell'host
+
+L'host Windows non è nel lab e non usa `server-dns`, quindi `helpdesk.azienda.lan`
+non risolve e gli IP `10.10.3.x` (dentro WSL2+LXD) non sono raggiungibili dal
+browser. La dashboard usa cookie `__Host-*` e callback OIDC legati a
+`https://helpdesk.azienda.lan`, quindi non si può usare `localhost` o un IP nudo:
+serve proprio quell'hostname sulla porta 443. Si instrada verso l'ingress Traefik
+con un port-forward.
+
+Non si usa `--address 127.0.0.1` + `localhost` nel file hosts: il
+`localhostForwarding` di WSL2 sulla 443 privilegiata non è affidabile (il
+port-forward risponde `200` da dentro WSL ma il browser Windows non riceve nulla).
+Il metodo robusto è esporre il port-forward su **tutte le interfacce WSL**
+(`--address 0.0.0.0`) e puntare il file hosts di Windows all'**IP eth0 di WSL**,
+che Windows raggiunge direttamente.
+
+Prerequisito: i workload Helios devono essere **promossi** (drill completato),
+altrimenti l'ingress risponde 503.
+
+1. In WSL, ricava l'IP eth0 della VM WSL (è quello che Windows può raggiungere;
+   il primo token di `hostname -I`):
+
+   ```bash
+   ip -4 -o addr show eth0 | awk '{print $1=$1; sub(/\/.*/,"",$4); print $4}' | tail -1
+   ```
+
+   In alternativa, più corto: `hostname -I | awk '{print $1}'`. Annota il valore
+   (es. `172.23.112.78`); **cambia a ogni `wsl --shutdown`/riavvio**, quindi va
+   riletto e riaggiornato nel file hosts ogni volta.
+
+2. Port-forward dell'ingress su tutte le interfacce, in una shell dedicata da
+   tenere aperta. `sudo` perché la 443 è privilegiata, e `env KUBECONFIG=...`
+   perché `sudo` azzera l'ambiente dell'utente:
+
+   ```bash
+   sudo env KUBECONFIG="$HOME/.kube/helios-onprem.yaml" \
+     kubectl -n kube-system port-forward svc/traefik 443:443 --address 0.0.0.0
+   ```
+
+3. Nel file hosts di Windows (`C:\Windows\System32\drivers\etc\hosts`), con l'IP
+   letto al passo 1. Per generare la riga esatta da incollare, da WSL:
+
+   ```bash
+   echo "$(hostname -I | awk '{print $1}') helpdesk.azienda.lan auth.azienda.lan"
+   ```
+
+   Puoi aggiornarlo in modo idempotente da un **PowerShell come amministratore**
+   (rimuove le vecchie righe per quei due host e riscrive quella corrente con
+   l'IP di WSL):
+
+   ```powershell
+   $wslIp = (wsl -e bash -lc "hostname -I | awk '{print `$1}'").Trim()
+   $hosts = "$env:windir\System32\drivers\etc\hosts"
+   $keep  = Get-Content $hosts | Where-Object { $_ -notmatch 'helpdesk\.azienda\.lan|auth\.azienda\.lan' }
+   ($keep + "$wslIp helpdesk.azienda.lan auth.azienda.lan") | Set-Content $hosts -Encoding ascii
+   ```
+
+4. Browser Windows → `https://helpdesk.azienda.lan` → accetta il certificato
+   self-signed → login Keycloak (stesso port-forward, Traefik smista per Host) con
+   l'operatore DR. La porta **deve** restare 443: il `redirect_uri` OIDC è senza
+   porta, quindi un 8443 romperebbe il login.
+
+Se il browser non raggiunge l'IP di WSL, verifica che il port-forward sia su
+`--address 0.0.0.0` (non `127.0.0.1`) e che l'IP nel file hosts sia quello **attuale**
+di eth0 (passo 1). In alternativa, per una verifica rapida senza browser, da
+`pc-dipendente1` (che usa il DNS del lab):
+`curl -sk https://helpdesk.azienda.lan/api/v1/session`.
 
 ---
 

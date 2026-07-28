@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
+from helios_shared.db import normalize_pg_dsn
 from helios_shared.oidc import (
     OidcJwtAuthenticator,
     OidcVerificationConfig,
@@ -17,7 +18,7 @@ from helios_ticket_service.presentation.api import create_app
 def build_app() -> FastAPI:
     settings = TicketSettings()  # type: ignore[call-arg]
     pool = AsyncConnectionPool(
-        conninfo=settings.database_url,
+        conninfo=normalize_pg_dsn(settings.database_url),
         min_size=settings.database_pool_min_size,
         max_size=settings.database_pool_max_size,
         open=False,

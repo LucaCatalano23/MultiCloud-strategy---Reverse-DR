@@ -45,8 +45,11 @@ for workload in "${helios_workloads[@]}"; do
   exec_onprem kubectl -n "${HELIOS_DR_NAMESPACE}" get "deployment/${workload}" >/dev/null
 done
 
-exec_onprem kubectl -n "${HELIOS_IDENTITY_NAMESPACE}" rollout status statefulset/keycloak-postgres --timeout=300s
-exec_onprem kubectl -n "${HELIOS_IDENTITY_NAMESPACE}" rollout status deployment/keycloak --timeout=300s
+# Keycloak e' warm e di norma gia' ready qui; il timeout ampio copre pero' un suo
+# riavvio con primo build Quarkus lento (vedi progressDeadlineSeconds nel manifest),
+# cosi' un Keycloak lento non fa fallire una promozione altrimenti valida.
+exec_onprem kubectl -n "${HELIOS_IDENTITY_NAMESPACE}" rollout status statefulset/keycloak-postgres --timeout=600s
+exec_onprem kubectl -n "${HELIOS_IDENTITY_NAMESPACE}" rollout status deployment/keycloak --timeout=600s
 
 discovery_path="/api/v1/namespaces/${HELIOS_IDENTITY_NAMESPACE}/services/http:keycloak:http/proxy/realms/helios-desk/.well-known/openid-configuration"
 discovery_document="$(exec_onprem kubectl get --raw "${discovery_path}")"

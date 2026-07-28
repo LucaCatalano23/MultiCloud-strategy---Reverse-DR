@@ -20,6 +20,10 @@ if lxc_retry config device show "${ANSIBLE_NODE_NAME}" | grep -q '^lxd-socket:';
   lxc_retry config device remove "${ANSIBLE_NODE_NAME}" lxd-socket
 fi
 
+# Auto-riparazione di uno stato dpkg lasciato a meta' da un apt-get interrotto in
+# un tentativo precedente: senza, ogni install fallirebbe con "dpkg was
+# interrupted" e i retry ripeterebbero lo stesso errore su uno stato rotto.
+exec_ansible dpkg --configure -a
 exec_ansible apt-get update
 exec_ansible env DEBIAN_FRONTEND=noninteractive apt-get install -y ansible-core git ca-certificates curl gzip snapd unzip
 

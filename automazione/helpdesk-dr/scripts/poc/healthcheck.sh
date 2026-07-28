@@ -21,8 +21,13 @@ check() {
 check "on-prem k3s nodes" exec_onprem kubectl get nodes
 # OpenBao e Keycloak devono essere sempre operativi: senza vault dissigillato i
 # pod non possono materializzare i propri Secret, e il failover promuoverebbe un
-# sito incapace di servire traffico.
-check "openbao unsealed" bash "${ROOT_DIR}/../infra/vault/scripts/verify-openbao.sh"
+# sito incapace di servire traffico. Il check gira SUL nodo vault via 127.0.0.1
+# (cert locale), quindi non dipende da DNS del cluster ne' dal CA fuori dal nodo.
+# `bao status` esce 0 se dissigillato, 2 se sigillato, 1 se irraggiungibile.
+check "openbao unsealed" exec_vault env \
+  BAO_ADDR=https://127.0.0.1:8200 \
+  BAO_CACERT=/etc/openbao/tls/tls.crt \
+  /usr/local/bin/bao status
 check "on-prem Lambda DR adapter" exec_onprem kubectl -n lambda-dr rollout status deployment/event-adapter --timeout=30s
 check "on-prem ticket Lambda runtime" exec_onprem kubectl -n lambda-dr rollout status deployment/lambda-helpdesk-ticket-processor --timeout=30s
 mode="$(read_dr_state)"

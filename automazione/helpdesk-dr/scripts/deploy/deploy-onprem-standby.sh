@@ -33,10 +33,13 @@ exec_onprem kubectl apply -f /tmp/helpdesk-dr/infra/onprem/namespaces.yaml
 # Verificare la loro presenza *prima* del deploy fallirebbe sempre. Cio' che
 # deve esistere prima e' l'infrastruttura che li produce: il vault raggiungibile
 # e dissigillato, e le CRD dell'operatore installate nel cluster.
-if ! bash "${ROOT_DIR}/../infra/vault/scripts/verify-openbao.sh"; then
+# Preflight sul nodo vault via 127.0.0.1 (cert locale), non via rete: non dipende
+# da /etc/hosts/CA sull'host. `bao status` esce 0 se dissigillato.
+if ! exec_vault env BAO_ADDR=https://127.0.0.1:8200 \
+    BAO_CACERT=/etc/openbao/tls/tls.crt /usr/local/bin/bao status >/dev/null 2>&1; then
   cat >&2 <<'EOF'
-OpenBao non e' utilizzabile: i workload Helios non potrebbero ottenere le proprie
-credenziali. Vedi automazione/infra/vault/README.md.
+OpenBao non e' utilizzabile (irraggiungibile o sigillato): i workload Helios non
+potrebbero ottenere le proprie credenziali. Vedi automazione/infra/vault/README.md.
 EOF
   exit 1
 fi

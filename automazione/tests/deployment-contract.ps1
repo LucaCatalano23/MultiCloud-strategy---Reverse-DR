@@ -199,9 +199,11 @@ foreach ($reference in $contract.secrets.materializedSecrets) {
 }
 
 # Il preflight del vault deve precedere lo switch DNS nel playbook, altrimenti
-# si promuoverebbe un sito i cui pod non possono leggere le credenziali.
+# si promuoverebbe un sito i cui pod non possono leggere le credenziali. Il
+# preflight interroga `bao status` sul nodo vault (helios_vault_node): si
+# verifica la presenza di entrambi, non una stringa di implementazione fragile.
 if (Test-Path -LiteralPath $failoverPlaybookPath) {
-    if ($failoverPlaybook -notmatch 'verify-openbao\.sh') {
+    if ($failoverPlaybook -notmatch 'helios_vault_node' -or $failoverPlaybook -notmatch 'bao') {
         throw 'The failover playbook must verify OpenBao before promoting the DR site.'
     }
 }

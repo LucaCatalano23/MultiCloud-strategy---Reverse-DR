@@ -13,6 +13,7 @@ from helios_automation_service.infrastructure.executors import (
 )
 from helios_automation_service.infrastructure.postgres import PostgresAutomationRepository
 from helios_automation_service.presentation.api import create_app
+from helios_shared.db import normalize_pg_dsn
 from helios_shared.oidc import (
     OidcJwtAuthenticator,
     OidcVerificationConfig,
@@ -23,7 +24,7 @@ from helios_shared.oidc import (
 def build_app() -> FastAPI:
     settings = AutomationSettings()  # type: ignore[call-arg]
     pool = AsyncConnectionPool(
-        conninfo=settings.database_url,
+        conninfo=normalize_pg_dsn(settings.database_url),
         min_size=settings.database_pool_min_size,
         max_size=settings.database_pool_max_size,
         open=False,

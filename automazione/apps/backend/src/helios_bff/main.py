@@ -17,13 +17,14 @@ from helios_bff.infrastructure.service_clients import (
 )
 from helios_bff.infrastructure.telemetry import PostgresDrTelemetryStore
 from helios_bff.presentation.api import BffSite, create_app
+from helios_shared.db import normalize_pg_dsn
 from helios_shared.oidc import OidcJwtAuthenticator, OidcVerificationConfig, PyJwkSigningKeyProvider
 
 
 def build_app() -> FastAPI:
     settings = BffSettings()  # type: ignore[call-arg]
     pool = AsyncConnectionPool(
-        conninfo=settings.database_url,
+        conninfo=normalize_pg_dsn(settings.database_url),
         min_size=settings.database_pool_min_size,
         max_size=settings.database_pool_max_size,
         open=False,

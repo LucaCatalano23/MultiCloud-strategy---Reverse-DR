@@ -1,0 +1,50 @@
+#!/bin/sh
+# Runner dell'auto-unseal di OpenBao (sito DR), eseguito da
+# openbao-auto-unseal.service dopo il boot.
+#
+# Idempotente: su un vault gia' dissigillato esce 0 senza toccare nulla.
+# Diagnosticabile: se non riesce a dissigillare, stampa `bao status` sul journal
+# (che NON espone le chiavi), invece di sopprimere l'errore. Le chiavi Shamir
+# passano da stdin, mai in argv, perche' la process list del nodo e' leggibile
+# da altri utenti locali.
+#
+# Usa `bao status` e non un curl sui codici HTTP di /sys/health: e' lo stesso
+# canale con cui l'operatore inizializza e dissigilla, quindi elimina ipotesi
+# sui codici e sfrutta l'interpretazione dello stato fatta dal client.
+set -u
+
+BAO_BIN="/usr/local/bin/bao"
+KEYS_FILE="/etc/openbao/unseal/keys"
+: "${BAO_ADDR:=https://127.0.0.1:8200}"
+: "${BAO_CACERT:=/etc/openbao/tls/tls.crt}"
+export BAO_ADDR BAO_CACERT
+
+# `bao status` esce: 0 = dissigillato, 2 = sigillato, 1 = irraggiungibile/errore.
+"${BAO_BIN}" status >/dev/null 2>&1
+case $? in
+  0)
+    echo "OpenBao gia' dissigillato."
+    exit 0
+    ;;
+  2)
+    : # sigillato: si procede a dissigillare
+    ;;
+  *)
+    echo "OpenBao irraggiungibile, stato:" >&2
+    "${BAO_BIN}" status >&2 2>&1 || true
+    exit 1
+    ;;
+esac
+
+while IFS= read -r share; do
+  [ -n "${share}" ] || continue
+  printf '%s' "${share}" | "${BAO_BIN}" operator unseal - >/dev/null 2>&1 || true
+  if "${BAO_BIN}" status >/dev/null 2>&1; then
+    echo "OpenBao dissigillato."
+    exit 0
+  fi
+done <"${KEYS_FILE}"
+
+echo "Soglia di unseal non raggiunta: OpenBao resta sigillato. Stato:" >&2
+"${BAO_BIN}" status >&2 2>&1 || true
+exit 1
