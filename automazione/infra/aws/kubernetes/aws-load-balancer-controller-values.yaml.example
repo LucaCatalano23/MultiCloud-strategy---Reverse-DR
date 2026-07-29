@@ -1,5 +1,5 @@
 clusterName: reverse-dr-poc
-region: eu-west-1
+region: eu-south-1
 vpcId: REPLACE_VPC_ID
 replicaCount: 1
 serviceAccount:

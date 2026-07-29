@@ -1,9 +1,11 @@
-aws_region   = "eu-west-1"
+# eu-south-1 (Milano) is an opt-in region: enable it in the account before any
+# plan, otherwise every call fails with an unhelpful endpoint/token error.
+aws_region   = "eu-south-1"
 project_name = "reverse-dr"
 environment  = "poc"
 
 # Keep this order: primary workload AZ, then minimal witness AZ.
-availability_zones = ["eu-west-1a", "eu-west-1b"]
+availability_zones = ["eu-south-1a", "eu-south-1b"]
 
 vpc_cidr                    = "10.42.0.0/16"
 primary_public_subnet_cidr  = "10.42.0.0/24"

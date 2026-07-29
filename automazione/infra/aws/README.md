@@ -131,7 +131,7 @@ Non usare questa scelta come baseline production HA. Per produzione, passare a u
 
 ## Stima qualitativa dei costi
 
-I prezzi cambiano per regione e data: verificare sempre con [AWS Pricing Calculator](https://calculator.aws/). Ordine qualitativo atteso a basso traffico in `eu-west-1`:
+I prezzi cambiano per regione e data: verificare sempre con [AWS Pricing Calculator](https://calculator.aws/). La regione della PoC è `eu-south-1` (Milano), una regione **opt-in** da abilitare per account prima di qualsiasi `plan`. Ordine qualitativo atteso a basso traffico:
 
 | Driver | Incidenza | Nota |
 |---|---:|---|

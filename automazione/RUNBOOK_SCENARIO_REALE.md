@@ -94,6 +94,41 @@ Crea router, DNS (`server-dns` 10.10.2.53), `git-server`, `ansible-node`,
 `ansible-node` e `vault-openbao` hanno `boot.autostart=true`: ripartono da soli
 dopo un riavvio di LXD/WSL.
 
+### 1a. MTU dei container (OBBLIGATORIO su WSL2)
+
+Su WSL2 il percorso di rete annidato (WSL → LXD → container) ha una MTU effettiva
+inferiore a 1500. Con la MTU di default i pacchetti TLS grandi vengono persi e
+**ogni pull di immagini da internet fallisce** con `net/http: TLS handshake
+timeout`. Il guasto è insidioso perché si manifesta in punti diversi:
+
+- pod bloccati in `ContainerCreating` / `ImagePullBackOff` (`pause`, ESO,
+  postgres, keycloak);
+- PVC `Pending` perché l'helper pod del provisioner `local-path` (una `busybox`)
+  non riesce a scaricare la propria immagine → il volume non nasce.
+
+`lxc network set <rete> bridge.mtu 1200` **NON funziona** su WSL2: LXD prova a
+scrivere sysctl IPv6 (`/proc/sys/net/ipv6/conf/...`) che nel kernel WSL non
+esistono. Si imposta quindi la MTU **per-interfaccia** su ogni container e si
+riavvia (valore 1200 testato in questo ambiente):
+
+```bash
+for c in $(lxc list -c n --format csv); do
+  lxc config device override "$c" eth0 mtu=1200 2>/dev/null \
+    || lxc config device set "$c" eth0 mtu=1200 2>/dev/null || true
+done
+lxc restart --all
+```
+
+Verifica che un nodo che scarica immagini sia a `mtu 1200` (sblocco immediato
+runtime, senza riavvio, se serve al volo: `lxc exec <nodo> -- ip link set eth0 mtu 1200`):
+
+```bash
+lxc exec k3s-datacenter -- ip -o link show eth0 | grep -o 'mtu [0-9]*'
+```
+
+Salta questo passo e i passi 6, 10 e 11 falliranno con timeout apparentemente
+scollegati fra loro: è **sempre** la MTU.
+
 ## 2. Cluster k3s
 
 ```bash
@@ -158,16 +193,40 @@ L'import deve elencare quattro immagini: `helios-bff`, `helios-ticket-service`,
 ## 6. External Secrets Operator
 
 ESO è il consumatore dei segreti su entrambi i siti. Installalo nel cluster
-on-prem (riusa il values del lato AWS, che abilita le CRD):
+on-prem (riusa il values del lato AWS, che abilita le CRD).
+
+**Prima verifica il contesto**: `helm`/`kubectl` devono puntare al k3s on-prem
+(passo 3), non a un `docker-desktop`/minikube locale — altrimenti ESO finisce nel
+cluster sbagliato e il resto del DR non lo vede:
+
+```bash
+kubectl config current-context   # NON deve essere "docker-desktop"
+kubectl get nodes                # deve elencare k3s-datacenter
+```
+
+Poi installa con `upgrade --install` (idempotente: non dà "cannot re-use a name"
+se rilanci) e un timeout ampio, perché il primo pull delle immagini ESO in LXC è
+lento:
 
 ```bash
 helm repo add external-secrets https://charts.external-secrets.io
 helm repo update
-helm install external-secrets external-secrets/external-secrets \
+helm upgrade --install external-secrets external-secrets/external-secrets \
   -n external-secrets --create-namespace \
   -f automazione/infra/aws/kubernetes/external-secrets-values.yaml.example \
-  --wait
+  --wait --timeout 15m
 ```
+
+Se `--wait` scade comunque, non reinstallare: i pod stanno solo ancora salendo.
+Controlla e attendi `Running`:
+
+```bash
+kubectl -n external-secrets get pods
+```
+
+Se restano in `ContainerCreating`/`ImagePullBackOff` → hai saltato il passo 1a
+(MTU). Se una release precedente è rimasta in stato `failed`/`pending`, ripulisci
+con `helm uninstall external-secrets -n external-secrets` e rilancia l'`upgrade`.
 
 ## 7. Namespace e identità dei consumatori (prima di OpenBao)
 
@@ -329,6 +388,13 @@ drill precedente) `CREATE DATABASE` darebbe `already exists` e, in una catena
 > bash automazione/infra/vault/scripts/configure-openbao.sh
 > ```
 
+Prerequisito: **Keycloak deve essere `Ready`** (il provisioning ci si connette).
+Il wrapper lo verifica da solo, ma controlla prima per non aspettare a vuoto:
+
+```bash
+kubectl -n helios-identity get pods -l app.kubernetes.io/name=keycloak
+```
+
 ```bash
 cd automazione/infra/onprem
 bash scripts/apply-migrations.sh
@@ -337,8 +403,41 @@ cd ../..
 ```
 
 `apply-migrations.sh` applica anche `002_dr_telemetry.sql`, la tabella da cui la
-dashboard legge RPO/RTO. `provision-dr-operator.sh` crea l'utente operatore DR in
-Keycloak con i ruoli `tickets.read/write` e `automation.execute`.
+dashboard legge RPO/RTO.
+
+> **ATTENZIONE — usa il wrapper giusto.** Lo script da lanciare dall'host è
+> `infra/onprem/scripts/provision-dr-operator.sh`: crea in cluster il Job
+> `helios-dr-operator-provisioner` (immagine Keycloak, con `kcadm` e i Secret
+> montati), assegna all'operatore i ruoli `tickets.read/write` e
+> `automation.execute`, e **fallisce con errore** se il Job non completa. NON
+> lanciare `infra/onprem/keycloak/provision/provision-dr-operator.sh`: è la copia
+> *interna* eseguita dentro il pod (usa `/opt/keycloak/bin/kcadm.sh`) e sull'host
+> dà `kcadm.sh: No such file or directory`.
+
+**Verifica anti-403 (fallo ora, non dopo il login).** Il 403 dopo il login
+significa sempre che il token dell'operatore non porta i ruoli. Due controlli:
+
+1. Il Job di provisioning è completato con successo?
+   ```bash
+   kubectl -n helios-identity get job helios-dr-operator-provisioner
+   ```
+   Deve risultare `COMPLETIONS 1/1`. Se manca o è fallito, il wrapper non è
+   andato: rilancialo (è idempotente).
+
+2. Dopo la promozione, al **primo login** il token deve arrivare con i ruoli. Il
+   BFF cachea il token in sessione, quindi il login **deve essere pulito**:
+   finestra **in incognito** (o cancella i cookie `__Host-helios_session` e
+   `__Host-helios_csrf`). Verifica che la sessione più recente porti i ruoli:
+   ```bash
+   kubectl -n helpdesk exec deploy/postgres -- psql -U helpdesk -d helios \
+     -c "SELECT principal->'permissions' AS perms, expires_at FROM bff_sessions ORDER BY expires_at DESC LIMIT 1;"
+   ```
+   Deve mostrare `["automation.execute","tickets.read","tickets.write"]`. Se è
+   `[]` con il Job completato, è lo scope-mapping della realm alla deriva
+   (`helios-bff` con `fullScopeAllowed: false` senza `clientScopeMappings` verso
+   i ruoli di `helios-api`): reimporta la realm dal JSON corrente
+   (`infra/onprem/keycloak/realm/helios-desk-realm.json`, che li contiene) o
+   aggiungi lo scope-mapping via `kcadm`.
 
 ## 12. Coordinatore DR
 
@@ -437,7 +536,7 @@ altrimenti l'ingress risponde 503.
    il primo token di `hostname -I`):
 
    ```bash
-   ip -4 -o addr show eth0 | awk '{print $1=$1; sub(/\/.*/,"",$4); print $4}' | tail -1
+   ip -4 -o addr show eth0 | awk '{print $4}' | cut -d/ -f1
    ```
 
    In alternativa, più corto: `hostname -I | awk '{print $1}'`. Annota il valore
@@ -482,6 +581,28 @@ di eth0 (passo 1). In alternativa, per una verifica rapida senza browser, da
 `pc-dipendente1` (che usa il DNS del lab):
 `curl -sk https://helpdesk.azienda.lan/api/v1/session`.
 
+### Senza permessi di amministratore su Windows
+
+Se non puoi scrivere il file hosts di Windows (serve l'admin), ci sono due strade
+che **non** richiedono privilegi:
+
+- **Browser dentro WSL (WSLg, Windows 11).** In WSL hai `sudo` (è il tuo root, non
+  l'admin di Windows) e WSL raggiunge il lab **direttamente** su `10.10.3.10`:
+  niente port-forward, niente hosts di Windows.
+  ```bash
+  echo "10.10.3.10 helpdesk.azienda.lan auth.azienda.lan" | sudo tee -a /etc/hosts
+  sudo apt update && sudo apt install -y firefox-esr
+  firefox https://helpdesk.azienda.lan >/dev/null 2>&1 &
+  ```
+
+- **Chrome/Edge di Windows con `--host-resolver-rules`** (flag per-utente, nessuna
+  modifica di sistema). Serve il port-forward del passo 2 attivo e l'IP di WSL del
+  passo 1; sostituisci `IP_WSL`. Il `--user-data-dir` temporaneo evita che i flag
+  vengano ignorati se il browser è già aperto e non tocca il profilo aziendale:
+  ```text
+  chrome.exe --user-data-dir="%TEMP%\helios" --host-resolver-rules="MAP helpdesk.azienda.lan IP_WSL, MAP auth.azienda.lan IP_WSL" https://helpdesk.azienda.lan
+  ```
+
 ---
 
 ## Risoluzione problemi
@@ -489,13 +610,32 @@ di eth0 (passo 1). In alternativa, per una verifica rapida senza browser, da
 - **`Forbidden` su comandi `lxc` dopo un riavvio** → daemon LXD non ancora pronto:
   `sudo lxd waitready --timeout=60`, poi riprova.
 - **`lxc file push`/`exec` falliscono** → il container è `STOPPED`: `lxc start <nome>`.
+- **`net/http: TLS handshake timeout` sui pull, pod in `ContainerCreating`/`ImagePullBackOff`,
+  o PVC `Pending` (`local-path` helper-pod timeout)** → **MTU**: hai saltato il
+  passo 1a. Sblocco al volo: `lxc exec <nodo> -- ip link set eth0 mtu 1200`;
+  permanente: passo 1a. È la causa n.1 dei fallimenti "scollegati" di questo lab.
+- **`helm ... cannot re-use a name that is still in use`** → release già presente:
+  usa `helm upgrade --install` (passo 6), non `helm install`. Se è `failed`/`pending`,
+  `helm uninstall external-secrets -n external-secrets` e rilancia.
+- **`helm ... context deadline exceeded`** → `--wait` scaduto sul pull lento, non è
+  un errore di config: alza `--timeout 15m` e verifica i pod (`kubectl -n external-secrets get pods`).
+  Se il contesto è `docker-desktop`, stai installando nel cluster sbagliato (passo 6).
 - **`ExternalSecret` non passa a `SecretSynced`** → ESO non raggiunge OpenBao.
-  Verifica che `k3s-datacenter` risolva `vault.azienda.lan` (deve puntare a
-  `server-dns`) e che OpenBao sia dissigillato (`verify-openbao.sh`).
+  Errore `Vault is sealed` → dissigilla (passo 8/9). Errore auth/`InvalidProviderConfig`
+  dopo aver ricreato il namespace → riesegui `configure-openbao.sh` (token-reviewer).
+  Poi forza: `kubectl -n <ns> annotate externalsecret <name> force-sync=$(date +%s) --overwrite`.
 - **`seed-secrets.sh` dà errore TLS** → manca la riga in `/etc/hosts` o
   `BAO_CACERT` non punta alla CA: usa l'hostname, non l'IP (il cert ha il SAN).
 - **Pod applicativi in `CreateContainerConfigError`** → i Secret non sono ancora
   materializzati: risolvi prima gli `ExternalSecret`.
+- **403 dall'app subito dopo il login Keycloak** → il token dell'operatore non
+  porta i ruoli. Controlla che il Job `helios-dr-operator-provisioner` sia
+  `COMPLETIONS 1/1` (altrimenti rilancia `infra/onprem/scripts/provision-dr-operator.sh`,
+  NON la copia interna in `keycloak/provision/`), poi rifai un **login pulito in
+  incognito** (il BFF cachea il token in sessione). Verifica anti-403 al passo 11.
+- **`kcadm.sh: No such file or directory`** → hai lanciato lo script *interno*
+  `keycloak/provision/provision-dr-operator.sh` sull'host: usa il wrapper
+  `scripts/provision-dr-operator.sh` (passo 11).
 
 ---
 

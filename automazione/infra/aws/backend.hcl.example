@@ -1,3 +1,9 @@
+# `region` is the region of the STATE BUCKET, not the region of the resources.
+# The workloads live in eu-south-1 (see terraform.tfvars), while the state bucket
+# is deliberately kept in a different region: if the primary region becomes
+# unreachable, the state used to manage the infrastructure is still readable.
+# Set this to wherever the pre-created bucket actually lives - a mismatch fails
+# `terraform init` with an unhelpful authorization error.
 bucket         = "replace-with-precreated-terraform-state-bucket"
 key            = "reverse-dr/poc/aws.tfstate"
 region         = "eu-west-1"
