@@ -162,11 +162,16 @@ spec:
                 secretKeyRef:
                   name: helios-bff-database
                   key: DATABASE_URL
-            - name: OIDC_CLIENT_SECRET
+            - name: OIDC_CLIENT_PRIVATE_KEY
               valueFrom:
                 secretKeyRef:
                   name: helios-bff-runtime
-                  key: OIDC_CLIENT_SECRET
+                  key: OIDC_CLIENT_PRIVATE_KEY
+            - name: OIDC_CLIENT_CERTIFICATE
+              valueFrom:
+                secretKeyRef:
+                  name: helios-bff-runtime
+                  key: OIDC_CLIENT_CERTIFICATE
             - name: SESSION_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:

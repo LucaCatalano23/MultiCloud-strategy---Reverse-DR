@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,7 +17,14 @@ class BffSettings(BaseSettings):
     oidc_roles_claim: str = "roles"
     oidc_required_algorithms: str = "RS256"
     oidc_client_id: str = Field(min_length=1)
-    oidc_client_secret: SecretStr
+    # Come il BFF si autentica sul token endpoint. Il primario Entra impone
+    # `private_key_jwt` perche' la policy del tenant vieta i client secret; il
+    # DR Keycloak resta su `client_secret`. E' configurazione per sito, non un
+    # branch nel codice: vedi infrastructure/oidc_client_credentials.py.
+    oidc_client_auth_method: Literal["client_secret", "private_key_jwt"] = "client_secret"
+    oidc_client_secret: SecretStr | None = None
+    oidc_client_private_key: SecretStr | None = None
+    oidc_client_certificate: str | None = None
     oidc_authorization_endpoint: str = Field(min_length=1)
     oidc_token_endpoint: str = Field(min_length=1)
     oidc_redirect_uri: str = Field(min_length=1)
@@ -36,6 +43,24 @@ class BffSettings(BaseSettings):
     rto_target_seconds: int = Field(default=1800, ge=1)
     database_pool_min_size: int = Field(default=1, ge=1, le=20)
     database_pool_max_size: int = Field(default=10, ge=1, le=100)
+
+    @model_validator(mode="after")
+    def _client_credential_is_complete(self) -> "BffSettings":
+        """Fallisce all'avvio, non al primo login.
+
+        Una credenziale incompleta e' un errore di deployment: scoprirlo quando
+        un utente prova ad autenticarsi significa un 500 opaco in produzione
+        invece di un pod che non parte.
+        """
+        if self.oidc_client_auth_method == "client_secret":
+            if self.oidc_client_secret is None:
+                raise ValueError("OIDC_CLIENT_SECRET is required when auth method is client_secret")
+        elif self.oidc_client_private_key is None or not self.oidc_client_certificate:
+            raise ValueError(
+                "OIDC_CLIENT_PRIVATE_KEY and OIDC_CLIENT_CERTIFICATE are required "
+                "when auth method is private_key_jwt"
+            )
+        return self
 
     @property
     def algorithms(self) -> tuple[str, ...]:

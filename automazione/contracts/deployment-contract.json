@@ -103,15 +103,25 @@
     "reader": "helios-bff GET /api/v1/platform/status"
   },
   "identity": {
+    "note": "Le application registration Entra sono create e gestite dal team identita' aziendale, fuori da questo repository: non esiste piu' uno stack Terraform che le produca. L'audience e' quindi un input esterno, non un output derivabile.",
+    "audience": {
+      "source": "external-entra-app-registration",
+      "application": "demo-api-app",
+      "value": "client-id-guid-della-app-registration-api",
+      "note": "GUID del client ID, non l'identifier URI api://... : per gli access token v2 il claim aud e' il GUID della Web API."
+    },
     "primary": {
       "provider": "entra-id",
       "flow": "authorization-code-pkce",
-      "audienceSource": "entra.api_application_client_id"
+      "clientApplication": "demo-bff-app",
+      "clientAuthentication": "private-key-jwt",
+      "clientAuthenticationNote": "La policy aziendale vieta i client secret: il BFF si autentica sul token endpoint con una client assertion firmata dal certificato emesso per la app registration."
     },
     "dr": {
       "provider": "keycloak",
       "issuer": "https://auth.azienda.lan/realms/helios-desk",
-      "audienceSource": "entra.api_application_client_id",
+      "clientAuthentication": "client-secret",
+      "clientAuthenticationNote": "Keycloak DR resta su client secret: e' locale al sito ed emesso dal realm, non soggetto alla policy del tenant aziendale. Il metodo e' configurazione per sito (OIDC_CLIENT_AUTH_METHOD), non un branch nel codice.",
       "requiresOfflineIdentitySource": true
     },
     "permissions": [

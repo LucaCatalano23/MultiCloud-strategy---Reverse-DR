@@ -8,6 +8,10 @@ from urllib.parse import urlencode
 import httpx
 
 from helios_bff.domain.auth import TokenSet
+from helios_bff.infrastructure.oidc_client_credentials import (
+    OidcClientCredential,
+    OidcClientCredentialError,
+)
 
 
 class OidcClientError(RuntimeError):
@@ -19,7 +23,7 @@ class OidcBrowserConfig:
     authorization_endpoint: str
     token_endpoint: str
     client_id: str
-    client_secret: str
+    credential: OidcClientCredential
     redirect_uri: str
     scopes: tuple[str, ...]
 
@@ -28,10 +32,9 @@ class OidcBrowserConfig:
             self.authorization_endpoint,
             self.token_endpoint,
             self.client_id,
-            self.client_secret,
             self.redirect_uri,
         )
-        if not all(required) or not self.scopes:
+        if not all(required) or self.credential is None or not self.scopes:
             raise ValueError("OIDC browser configuration is incomplete")
         if "openid" not in self.scopes:
             raise ValueError("OIDC scopes must include openid")
@@ -66,6 +69,16 @@ class HttpOidcBrowserClient:
 
     async def exchange_code(self, *, code: str, code_verifier: str) -> TokenSet:
         try:
+            authentication = self._config.credential.authenticate(
+                token_endpoint=self._config.token_endpoint,
+                now=self._clock(),
+            )
+        except OidcClientCredentialError as exc:
+            # Non propagare il dettaglio della credenziale oltre questo confine:
+            # il chiamante vede sempre lo stesso errore opaco.
+            raise OidcClientError("OIDC client authentication is unavailable") from exc
+
+        try:
             response = await self._client.post(
                 self._config.token_endpoint,
                 data={
@@ -73,8 +86,9 @@ class HttpOidcBrowserClient:
                     "code": code,
                     "redirect_uri": self._config.redirect_uri,
                     "code_verifier": code_verifier,
+                    **authentication.body,
                 },
-                auth=(self._config.client_id, self._config.client_secret),
+                auth=authentication.basic_auth,
             )
             response.raise_for_status()
             payload = response.json()

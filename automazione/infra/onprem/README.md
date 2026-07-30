@@ -22,7 +22,7 @@ I due provider hanno issuer diversi e non devono essere mascherati come se fosse
 | Contratto | Valore base della PoC | Integrazione Entra reale |
 | --- | --- | --- |
 | issuer | `https://auth.azienda.lan/realms/helios-desk` | issuer tenant Entra sul primary |
-| audience | `api://reverse-dr-helpdesk` | GUID `api_application_client_id` dell'API Entra v2 |
+| audience | `api://reverse-dr-helpdesk` | GUID del client ID dell'API Entra v2 (`identity.audience.value` del deployment contract) |
 | claim autorizzazioni | `roles` | `roles` |
 | valori role | `tickets.read`, `tickets.write`, `automation.execute` | stessi valori nelle App Roles Entra |
 | identita aziendale stabile | `employee_id` | claim equivalente derivato dall'employee ID, non dall'email |
@@ -39,15 +39,15 @@ configMapGenerator:
     namespace: helios-identity
     behavior: merge
     literals:
-      - HELIOS_API_AUDIENCE=<api_application_client_id>
+      - HELIOS_API_AUDIENCE=<api-client-id-guid>
   - name: helios-onprem-config
     namespace: helios-desk
     behavior: merge
     literals:
-      - OIDC_AUDIENCE=<api_application_client_id>
+      - OIDC_AUDIENCE=<api-client-id-guid>
 ```
 
-Il resource client Keycloak mantiene l'ID interno `helios-api`; il mapper emette invece `HELIOS_API_AUDIENCE` nel claim `aud`. In questo modo i nomi dei client role restano stabili mentre l'audience segue l'output Entra dell'ambiente.
+Il resource client Keycloak mantiene l'ID interno `helios-api`; il mapper emette invece `HELIOS_API_AUDIENCE` nel claim `aud`. In questo modo i nomi dei client role restano stabili mentre l'audience segue il valore Entra dell'ambiente, fornito dal team identita' aziendale e registrato in `contracts/deployment-contract.json`.
 
 Il client `helios-bff` e confidential, richiede Authorization Code + PKCE S256, non abilita implicit flow, password grant o service account e accetta solo il callback HTTPS del BFF. Il suo secret entra nel realm tramite `${HELIOS_BFF_CLIENT_SECRET}` risolto da una variabile del Secret Kubernetes: il valore non compare nel ConfigMap o nel repository.
 

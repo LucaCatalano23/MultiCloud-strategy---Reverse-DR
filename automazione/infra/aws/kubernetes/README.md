@@ -38,8 +38,8 @@ CloudFront/S3 non è l'endpoint canonico: non inoltra `/api`, quindi non preserv
 | `REPLACE_AUTOMATION_LAMBDA_FUNCTION_NAME` | output omonimo; richiede Lambda abilitata |
 | `REPLACE_ACM_CERTIFICATE_ARN` | certificato regionale associato al dominio dell'ALB |
 | `REPLACE_APP_HOSTNAME` | hostname Route 53/DNS esterno scelto per la PoC |
-| `REPLACE_ENTRA_API_CLIENT_ID_GUID` | output canonico `entra.api_application_client_id` |
-| altri `REPLACE_ENTRA_*` | output non-secret del modulo Entra (issuer, client ID BFF, endpoint OIDC) |
+| `REPLACE_ENTRA_API_CLIENT_ID_GUID` | `identity.audience.value` del deployment contract, fornito dal team identità |
+| altri `REPLACE_ENTRA_*` | valori non-secret forniti dal team identità (issuer, client ID BFF, endpoint OIDC) |
 
 Il repository `automation` ospita anche il target immagine backup con tag dedicato `REPLACE_BACKUP_IMAGE_TAG`; quell'immagine deve contenere una versione `pg_dump` compatibile con RDS PostgreSQL, AWS CLI v2, `sed` e `sha256sum`.
 
@@ -53,7 +53,7 @@ Il flusso usa [External Secrets Operator](https://external-secrets.io/latest/pro
 4. `ExternalSecret` materializza Secret Kubernetes distinti per workload;
 5. i Deployment consumano solo le chiavi richieste.
 
-Il secret database deve contenere `DATABASE_URL`. Il secret config deve contenere `OIDC_CLIENT_SECRET` e `SESSION_ENCRYPTION_KEY`. Il valore database è atteso nel formato SQLAlchemy async `postgresql+asyncpg://...`; il CronJob sostituisce solo lo schema con `postgresql://` in memoria prima di invocare `pg_dump` e non stampa mai l'URL.
+Il secret database deve contenere `DATABASE_URL`. Il secret config deve contenere `OIDC_CLIENT_PRIVATE_KEY`, `OIDC_CLIENT_CERTIFICATE` e `SESSION_ENCRYPTION_KEY`: il primario si autentica con `private_key_jwt`, non con un client secret (vedi il README di `infra/aws`). Il valore database è atteso nel formato SQLAlchemy async `postgresql+asyncpg://...`; il CronJob sostituisce solo lo schema con `postgresql://` in memoria prima di invocare `pg_dump` e non stampa mai l'URL.
 
 Installare External Secrets prima del kustomization; i CRD `SecretStore` e `ExternalSecret` altrimenti non esistono. `external-secrets-values.yaml.example` mantiene una singola replica per contenere il costo della PoC. L'operator deve poter creare token via Kubernetes `TokenRequest` per i service account referenziati.
 

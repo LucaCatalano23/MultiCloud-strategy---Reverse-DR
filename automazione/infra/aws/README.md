@@ -93,13 +93,16 @@ Shape suggerite, senza valori reali:
     "DATABASE_URL": "postgresql+asyncpg://<restricted-user>:<secret>@<rds-address>:5432/helios?ssl=require"
   },
   "config": {
-    "OIDC_CLIENT_SECRET": "<secret>",
+    "OIDC_CLIENT_PRIVATE_KEY": "<PEM PKCS#8 della chiave privata del certificato BFF>",
+    "OIDC_CLIENT_CERTIFICATE": "<PEM del certificato registrato sull'application BFF>",
     "SESSION_ENCRYPTION_KEY": "<random-32-byte-or-longer-secret>"
   }
 }
 ```
 
-Issuer, client ID e audience Entra sono non-secret e restano nel ConfigMap cloud. L'audience deve provenire dall'output canonico `entra.api_application_client_id` definito dal deployment contract, non da una stringa duplicata.
+Il primario **non usa un client secret**: la policy del tenant aziendale lo vieta, quindi il BFF si autentica sul token endpoint con una client assertion firmata (`private_key_jwt`, RFC 7523) e la credenziale confidenziale è la chiave privata del certificato registrato sull'application. Il certificato accompagna la chiave perché serve a derivare l'impronta `x5t` con cui Entra individua quale credenziale ha firmato. Il selettore è `OIDC_CLIENT_AUTH_METHOD` nel ConfigMap: il sito DR resta su `client_secret`, perché il suo Keycloak è locale e non soggetto a quella policy. È configurazione per sito, non un branch nel codice.
+
+Issuer, client ID e audience Entra sono non-secret e restano nel ConfigMap cloud. Le application registration sono create e gestite dal **team identità aziendale**, fuori da questo repository: l'audience è un input esterno documentato in `contracts/deployment-contract.json` (`identity.audience`), non un output derivabile da Terraform. Deve essere il GUID del client ID della API, non l'identifier URI `api://...`.
 
 Il CronJob di backup ha bisogno anche di `psql`, non solo di `pg_dump`: dopo un
 upload S3 riuscito registra la metrica `backup.last_success` nella tabella

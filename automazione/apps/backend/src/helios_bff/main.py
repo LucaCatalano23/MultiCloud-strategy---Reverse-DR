@@ -9,6 +9,11 @@ from helios_bff.application.auth_service import BrowserAuthService
 from helios_bff.config import BffSettings
 from helios_bff.infrastructure.crypto import FernetSecretProtector
 from helios_bff.infrastructure.oidc_client import HttpOidcBrowserClient, OidcBrowserConfig
+from helios_bff.infrastructure.oidc_client_credentials import (
+    ClientSecretCredential,
+    OidcClientCredential,
+    PrivateKeyJwtCredential,
+)
 from helios_bff.infrastructure.postgres import PostgresAuthStore
 from helios_bff.infrastructure.service_clients import (
     HttpAutomationClient,
@@ -19,6 +24,32 @@ from helios_bff.infrastructure.telemetry import PostgresDrTelemetryStore
 from helios_bff.presentation.api import BffSite, create_app
 from helios_shared.db import normalize_pg_dsn
 from helios_shared.oidc import OidcJwtAuthenticator, OidcVerificationConfig, PyJwkSigningKeyProvider
+
+
+def _build_client_credential(settings: BffSettings) -> OidcClientCredential:
+    """Sceglie il metodo di autenticazione client dalla configurazione del sito.
+
+    La validazione della completezza e' gia' avvenuta in `BffSettings`: qui i
+    valori sono garantiti presenti per il metodo selezionato.
+    """
+    if settings.oidc_client_auth_method == "client_secret":
+        client_secret = settings.oidc_client_secret
+        if client_secret is None:
+            raise ValueError("OIDC client secret is missing after settings validation")
+        return ClientSecretCredential(
+            client_id=settings.oidc_client_id,
+            client_secret=client_secret.get_secret_value(),
+        )
+
+    private_key = settings.oidc_client_private_key
+    certificate = settings.oidc_client_certificate
+    if private_key is None or certificate is None:
+        raise ValueError("OIDC client certificate credential is missing after settings validation")
+    return PrivateKeyJwtCredential(
+        client_id=settings.oidc_client_id,
+        private_key_pem=private_key.get_secret_value(),
+        certificate_pem=certificate,
+    )
 
 
 def build_app() -> FastAPI:
@@ -51,7 +82,7 @@ def build_app() -> FastAPI:
             authorization_endpoint=settings.oidc_authorization_endpoint,
             token_endpoint=settings.oidc_token_endpoint,
             client_id=settings.oidc_client_id,
-            client_secret=settings.oidc_client_secret.get_secret_value(),
+            credential=_build_client_credential(settings),
             redirect_uri=settings.oidc_redirect_uri,
             scopes=settings.scopes,
         ),

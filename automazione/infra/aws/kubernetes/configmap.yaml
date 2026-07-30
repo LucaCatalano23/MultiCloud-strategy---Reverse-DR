@@ -16,6 +16,10 @@ data:
   OIDC_REQUIRED_ALGORITHMS: RS256
   OIDC_SCOPES: "openid profile email REPLACE_ENTRA_API_SCOPE"
   OIDC_CLIENT_ID: REPLACE_ENTRA_BFF_CLIENT_ID_GUID
+  # Il tenant aziendale vieta i client secret: il BFF si autentica sul token
+  # endpoint con una client assertion firmata dal certificato registrato
+  # sull'application. Il DR Keycloak resta su `client_secret` (default).
+  OIDC_CLIENT_AUTH_METHOD: private_key_jwt
   OIDC_REDIRECT_URI: https://REPLACE_APP_HOSTNAME/api/v1/auth/callback
   OIDC_POST_LOGOUT_REDIRECT_URI: https://REPLACE_APP_HOSTNAME/
   OIDC_AUTHORIZATION_ENDPOINT: REPLACE_ENTRA_AUTHORIZATION_ENDPOINT
