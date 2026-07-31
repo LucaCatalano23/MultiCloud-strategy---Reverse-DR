@@ -17,6 +17,12 @@ comandi CLI di questa guida sono bash eseguibili da lì.
 **Identità: fuori scope.** Le application registration Entra sono create e gestite dal team
 identità aziendale. Questa guida ne *consuma* gli output (§2), non le crea.
 
+**Versione eseguibile.** Chi preferisce lanciare invece di cliccare trova la stessa
+procedura come script AWS CLI in [`provision-cli/`](infra/aws/provision-cli/): una funzione
+per sezione, ri-eseguibile, con gli stessi passi manuali dichiarati (validazione DNS, valori
+Entra, PEM del certificato BFF). Le due strade sono equivalenti — la console è più didattica,
+lo script più ripetibile.
+
 ---
 
 ## 0. Prima di iniziare: due conseguenze da mettere in conto
