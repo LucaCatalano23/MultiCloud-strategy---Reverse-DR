@@ -72,6 +72,14 @@ REPO_ROOT="${REPO_ROOT:-/path/to/repository}"
 # costo zero dopo.
 APP_HOST="${APP_HOST:-}"                      # es. helios.tuodominio.example
 
+# ACM_SELF_SIGNED=1 per host interni/placeholder (es. *.azienda.lan): la CA
+# pubblica di ACM non emette per domini non pubblici (il certificato va in
+# FAILED). In questa modalita' lo script genera un certificato self-signed per
+# APP_HOST e lo importa in ACM. Il browser mostra un avviso, ma TLS sull'ALB,
+# login OIDC e cookie __Host-* funzionano: e' un limite PoC dichiarato, non un
+# malfunzionamento. Con 0 si usa la validazione DNS pubblica.
+ACM_SELF_SIGNED="${ACM_SELF_SIGNED:-0}"
+
 # Valori consegnati dal team identita' aziendale (application registration
 # demo-api-app-* e demo-bff-app-*). Sono non-secret.
 # Il tenant NON e' una variabile a se': e' gia' dentro le cinque URL sotto
@@ -181,11 +189,46 @@ preflight() {
   log "preflight completato."
 }
 
+# _acm_self_signed — §3 (variante host interni): certificato self-signed per
+# APP_HOST importato in ACM. ACM accetta l'import di certificati self-signed
+# (sono issuer di se stessi, non serve catena). Limite PoC dichiarato: il
+# browser mostra un avviso, ma il flusso funziona.
+_acm_self_signed() {
+  need openssl
+  # Se lo stato punta gia' a un certificato IMPORTED, riusalo.
+  if [ -n "${CERT_ARN:-}" ] && \
+     aws acm describe-certificate --certificate-arn "$CERT_ARN" \
+       --query 'Certificate.Type' --output text 2>/dev/null | grep -q IMPORTED; then
+    log "Certificato self-signed gia' importato: $CERT_ARN"
+    return
+  fi
+  umask 077
+  local d="$STATE_DIR/selfsigned"; mkdir -p "$d"
+  # SAN obbligatoria: i browser moderni ignorano il CN. 825 giorni di validita'.
+  openssl req -x509 -newkey rsa:2048 -nodes \
+    -keyout "$d/key.pem" -out "$d/cert.pem" -days 825 \
+    -subj "/CN=${APP_HOST}" -addext "subjectAltName=DNS:${APP_HOST}"
+  local arn
+  arn=$(aws acm import-certificate \
+    --certificate "fileb://$d/cert.pem" \
+    --private-key "fileb://$d/key.pem" \
+    --tags "Key=Name,Value=${PREFIX}-selfsigned" \
+    --query CertificateArn --output text)
+  shred -u "$d/key.pem"
+  save_state CERT_ARN "$arn"
+  log "Certificato self-signed importato in ACM per ${APP_HOST}: $CERT_ARN"
+  warn "Limite PoC: certificato self-signed. Il browser mostrera' un avviso di"
+  warn "sicurezza da accettare una volta; login OIDC, cookie __Host-* e ALB"
+  warn "funzionano comunque. Fai puntare ${APP_HOST} all'hostname dell'ALB via"
+  warn "DNS interno o /etc/hosts (vedi verify)."
+}
+
 # =============================================================================
 # s03_acm — §3: certificato ACM. Richiede un passo DNS manuale.
 # =============================================================================
 s03_acm() {
   require_vars APP_HOST
+  [ "$ACM_SELF_SIGNED" = "1" ] && { _acm_self_signed; return; }
   # Riusa un certificato esistente SOLO se ISSUED o ancora in validazione. Un
   # certificato FAILED (validazione DNS mai completata) non si valida piu': va
   # richiesto di nuovo, non riciclato.
@@ -209,6 +252,15 @@ s03_acm() {
   fi
   save_state CERT_ARN "$arn"
 
+  # ACM impiega qualche secondo a generare il record di validazione dopo la
+  # richiesta: interrogarlo subito restituisce vuoto. Attendi che compaia.
+  local rec="" i
+  for i in $(seq 1 10); do
+    rec=$(aws acm describe-certificate --certificate-arn "$CERT_ARN" \
+      --query 'Certificate.DomainValidationOptions[0].ResourceRecord.Name' --output text 2>/dev/null)
+    [ -n "$rec" ] && [ "$rec" != "None" ] && break
+    sleep 3
+  done
   log "Record CNAME di validazione da creare nel TUO DNS:"
   aws acm describe-certificate --certificate-arn "$CERT_ARN" \
     --query 'Certificate.DomainValidationOptions[].ResourceRecord' --output table
@@ -649,9 +701,11 @@ s08_rds() {
       --availability-zone "$PRIMARY_AZ" --no-multi-az --no-publicly-accessible \
       --db-subnet-group-name "${PREFIX}-postgres" --vpc-security-group-ids "$DB_SG" \
       --enable-iam-database-authentication \
-      --backup-retention-period 7 --no-performance-insights \
-      --enabled-cloudwatch-logs-exports '[]' \
+      --backup-retention-period 7 --no-enable-performance-insights \
       --no-deletion-protection >/dev/null
+      # Log exports RDS omessi di proposito: nessun log verso CloudWatch
+      # (scelta cost-conscious, coerente con EKS_LOG_TYPES). Per abilitarli
+      # aggiungere: --enable-cloudwatch-logs-exports postgresql upgrade
     log "Creazione RDS in corso (~8 min)..."
     aws rds wait db-instance-available --db-instance-identifier "${PREFIX}-postgres"
   fi
@@ -912,38 +966,82 @@ s13_events() {
 # =============================================================================
 s14_images() {
   require_vars REGISTRY
-  need git
   cd "$REPO_ROOT"
-  save_state IMAGE_TAG "$(git rev-parse --short HEAD)"
-  save_state BACKUP_IMAGE_TAG "backup-${IMAGE_TAG}"
+  # Tag delle immagini. Preferenza: valore imposto via IMAGE_TAG, poi lo short
+  # SHA di git, infine un timestamp. La copia di esecuzione puo' NON essere un
+  # checkout git (file copiati senza .git): in quel caso `git rev-parse` fallisce
+  # e senza fallback IMAGE_TAG resterebbe vuoto, producendo un tag docker rotto
+  # (".../reverse-dr-poc-bff:" -> invalid reference format).
+  local tag="${IMAGE_TAG:-}"
+  [ -n "$tag" ] || tag="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || true)"
+  [ -n "$tag" ] || tag="manual-$(date -u +%Y%m%d%H%M%S)"
+  [ -n "$tag" ] || die "Impossibile determinare IMAGE_TAG."
+  save_state IMAGE_TAG "$tag"
+  save_state BACKUP_IMAGE_TAG "backup-${tag}"
+  log "Tag immagini: $IMAGE_TAG"
   aws ecr get-login-password | docker login --username AWS --password-stdin "$REGISTRY"
 
-  local backend="automazione/apps/backend"
-  docker build -t "$REGISTRY/${PREFIX}-bff:$IMAGE_TAG"        -f "$backend/services/bff/Dockerfile" "$backend"
-  docker build -t "$REGISTRY/${PREFIX}-ticket:$IMAGE_TAG"     -f "$backend/services/ticket-service/Dockerfile" "$backend"
-  docker build -t "$REGISTRY/${PREFIX}-automation:$IMAGE_TAG" -f "$backend/services/automation-service/Dockerfile" "$backend"
-  docker build -t "$REGISTRY/${PREFIX}-frontend:$IMAGE_TAG"   automazione/apps/frontend
-  docker build -t "$REGISTRY/${PREFIX}-ticket-processor:$IMAGE_TAG" \
-    -f automazione/apps/functions/ticket-processor/Dockerfile .
-
   # §14.4 — immagine di backup: non esiste nel repo, va creata. pg_dump + psql
-  # (per la metrica RPO) + AWS CLI.
+  # (per la metrica RPO) + AWS CLI. La scrive qui cosi' e' disponibile a _build_push.
   mkdir -p automazione/apps/backup
   cat > automazione/apps/backup/Dockerfile <<'DOCKERFILE'
 FROM public.ecr.aws/docker/library/postgres:16-alpine
 RUN apk add --no-cache aws-cli coreutils
 USER 70:70
 DOCKERFILE
-  docker build -t "$REGISTRY/${PREFIX}-automation:$BACKUP_IMAGE_TAG" \
-    -f automazione/apps/backup/Dockerfile automazione/apps/backup
 
-  local r
-  for r in bff ticket automation frontend ticket-processor; do
-    docker push "$REGISTRY/${PREFIX}-${r}:$IMAGE_TAG"
-  done
-  docker push "$REGISTRY/${PREFIX}-automation:$BACKUP_IMAGE_TAG"
+  # I repository ECR sono IMMUTABLE: un tag gia' pubblicato non si sovrascrive.
+  # _build_push salta build e push se il tag esiste gia', rendendo s14
+  # ri-eseguibile. Se hai cambiato il codice, cambia IMAGE_TAG (tag = versione).
+  local backend="automazione/apps/backend"
+  _build_push "${PREFIX}-bff"        "$IMAGE_TAG"        -f "$backend/services/bff/Dockerfile" "$backend"
+  _build_push "${PREFIX}-ticket"     "$IMAGE_TAG"        -f "$backend/services/ticket-service/Dockerfile" "$backend"
+  _build_push "${PREFIX}-automation" "$IMAGE_TAG"        -f "$backend/services/automation-service/Dockerfile" "$backend"
+  _build_push "${PREFIX}-frontend"   "$IMAGE_TAG"        automazione/apps/frontend
+  _build_push "${PREFIX}-automation" "$BACKUP_IMAGE_TAG" -f automazione/apps/backup/Dockerfile automazione/apps/backup
+  # ticket-processor NON usa _build_push: Lambda pretende un manifest singolo,
+  # non l'image index che BuildKit produce di default (vedi _ensure_lambda_image).
+  _ensure_lambda_image
+
   _lambda
   log "Immagini e Lambda pronte."
+}
+
+# _ensure_lambda_image — costruisce e pubblica l'immagine della function in un
+# formato che AWS Lambda accetta. Il BuildKit di default aggiunge un'attestazione
+# di provenance che crea un image index (manifest multiplo); Lambda lo rifiuta con
+# "image manifest ... is not supported". Il builder legacy (DOCKER_BUILDKIT=0)
+# produce un singolo manifest Docker v2 schema 2, accettato. Le immagini EKS non
+# hanno questo vincolo, quindi il trattamento speciale resta isolato qui.
+_ensure_lambda_image() {
+  local repo="${PREFIX}-ticket-processor" tag="$IMAGE_TAG" mt
+  if aws ecr describe-images --repository-name "$repo" --image-ids imageTag="$tag" >/dev/null 2>&1; then
+    mt=$(aws ecr batch-get-image --repository-name "$repo" --image-ids imageTag="$tag" \
+          --query 'images[0].imageManifestMediaType' --output text 2>/dev/null || echo "")
+    if [ "$mt" = "application/vnd.docker.distribution.manifest.v2+json" ]; then
+      log "Immagine Lambda ${repo}:${tag} gia' compatibile, salto."
+      return 0
+    fi
+    # Tag immutabile ma formato non-Lambda: va cancellato per poter ripubblicare.
+    warn "Immagine ${repo}:${tag} non compatibile con Lambda (${mt:-sconosciuto}): la ricreo."
+    aws ecr batch-delete-image --repository-name "$repo" --image-ids imageTag="$tag" >/dev/null
+  fi
+  DOCKER_BUILDKIT=0 docker build -t "$REGISTRY/${repo}:${tag}" \
+    -f automazione/apps/functions/ticket-processor/Dockerfile .
+  docker push "$REGISTRY/${repo}:${tag}"
+}
+
+# _build_push REPO TAG [docker build args...] — costruisce e pubblica solo se il
+# tag non e' gia' presente in ECR (repository immutabili).
+_build_push() {
+  local repo="$1" tag="$2"; shift 2
+  if aws ecr describe-images --repository-name "$repo" \
+       --image-ids imageTag="$tag" >/dev/null 2>&1; then
+    log "ECR ${repo}:${tag} gia' presente, salto build e push."
+    return 0
+  fi
+  docker build -t "$REGISTRY/${repo}:${tag}" "$@"
+  docker push "$REGISTRY/${repo}:${tag}"
 }
 
 _lambda() {
@@ -963,11 +1061,25 @@ _lambda() {
   digest=$(aws ecr describe-images --repository-name "${PREFIX}-ticket-processor" \
     --image-ids imageTag="$IMAGE_TAG" --query 'imageDetails[0].imageDigest' --output text)
   if ! aws lambda get-function --function-name "${PREFIX}-ticket-automation" >/dev/null 2>&1; then
-    aws lambda create-function --function-name "${PREFIX}-ticket-automation" \
-      --package-type Image \
-      --code "ImageUri=${REGISTRY}/${PREFIX}-ticket-processor@${digest}" \
-      --role "arn:aws:iam::${ACCOUNT_ID}:role/${PREFIX}-ticket-automation-lambda" \
-      --architectures x86_64 --memory-size 256 --timeout 30 >/dev/null
+    # Un ruolo IAM appena creato non e' subito assumibile da Lambda: la
+    # propagazione richiede alcuni secondi e create-function fallisce con "The
+    # role defined for the function cannot be assumed by Lambda". Si ritenta solo
+    # su quell'errore; ogni altro errore e' reale e ferma subito.
+    local attempt out created=0
+    for attempt in $(seq 1 12); do
+      if out=$(aws lambda create-function --function-name "${PREFIX}-ticket-automation" \
+          --package-type Image \
+          --code "ImageUri=${REGISTRY}/${PREFIX}-ticket-processor@${digest}" \
+          --role "arn:aws:iam::${ACCOUNT_ID}:role/${PREFIX}-ticket-automation-lambda" \
+          --architectures x86_64 --memory-size 256 --timeout 30 2>&1); then
+        created=1; break
+      fi
+      printf '%s' "$out" | grep -q "cannot be assumed" \
+        || die "create-function fallita: $out"
+      log "Ruolo IAM non ancora propagato, ritento ($attempt/12)..."
+      sleep 5
+    done
+    [ "$created" = 1 ] || die "Ruolo Lambda non assumibile dopo ~60s."
     aws lambda wait function-active --function-name "${PREFIX}-ticket-automation"
   fi
   aws lambda put-function-concurrency --function-name "${PREFIX}-ticket-automation" \

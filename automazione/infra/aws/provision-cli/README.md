@@ -54,7 +54,24 @@ export BFF_PFX=/mnt/c/Users/user/Desktop/cloud-app-dev-heliosbff-tlabpal.pfx
 
 Opzionali con default sensati: `AWS_REGION` (`eu-south-1`), `PREFIX`
 (`reverse-dr-poc`), `EKS_LOG_TYPES` (`authenticator` — vedi sotto),
-`EKS_ADMIN_ROLE_ARN` (auto-rilevato per un ruolo SSO AdministratorAccess).
+`EKS_ADMIN_ROLE_ARN` (auto-rilevato per un ruolo SSO AdministratorAccess),
+`IMAGE_TAG` (default: short SHA di git, o un timestamp se la copia non è un
+checkout git — consigliato impostarlo, es. `poc-1`).
+
+### Hostname interno o placeholder: certificato self-signed
+
+La CA pubblica di ACM **non emette** per domini non pubblici (`*.azienda.lan`,
+nomi d'esempio): il certificato va in `FAILED`. Se `APP_HOST` è interno, imposta:
+
+```bash
+export ACM_SELF_SIGNED=1
+```
+
+`s03_acm` genera allora un certificato self-signed per `APP_HOST` e lo importa in
+ACM. Il browser mostra un avviso da accettare una volta, ma TLS sull'ALB, login
+OIDC e cookie `__Host-*` funzionano — è un limite PoC dichiarato. Per raggiungere
+l'app dal browser, fai puntare `APP_HOST` all'hostname dell'ALB via DNS interno o
+`/etc/hosts` (l'hostname ALB lo stampa `verify`).
 
 ## Uso
 
