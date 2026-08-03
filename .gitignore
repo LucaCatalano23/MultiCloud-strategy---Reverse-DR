@@ -27,3 +27,5 @@ automazione/helpdesk-dr/.state/
 automazione/helpdesk-dr/config.env
 automazione/helpdesk-dr/.restore.*
 automazione/helpdesk-dr/.helpdesk.zone
+*.zip
+

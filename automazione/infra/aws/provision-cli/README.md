@@ -90,6 +90,26 @@ Oppure una sezione per volta, nell'ordine di `all()`:
 ./provision.sh verify
 ```
 
+### Ripresa dopo un errore del node group
+
+`s15_platform` installa componenti Kubernetes, ma non crea i worker: il managed
+node group appartiene a `s06_eks`. Prima dei comandi Helm, `s15_platform`
+verifica quindi che esista almeno un nodo `Ready` e si ferma con una diagnostica
+esplicita se il requisito non e' soddisfatto.
+
+Per riprendere dopo un errore di join dei nodi:
+
+```bash
+./provision.sh s04_network  # riconcilia NAT, route e associazioni delle subnet
+./provision.sh s06_eks      # riprende CREATING o ricrea un CREATE_FAILED
+./provision.sh s15_platform
+```
+
+La riesecuzione e' convergente: un node group `ACTIVE` non viene toccato; uno in
+`CREATING` viene atteso; uno in `CREATE_FAILED` viene diagnosticato, eliminato e
+ricreato una sola volta. Uno stato `DEGRADED` non viene invece cancellato in
+automatico, per non interrompere eventuali workload gia' in esecuzione.
+
 Teardown guidato (richiede di digitare `distruggi`):
 
 ```bash

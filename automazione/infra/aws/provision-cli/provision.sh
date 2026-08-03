@@ -142,6 +142,85 @@ require_vars() {
 # I valori non contengono spazi/virgole, quindi non serve quoting.
 tag_spec() { printf '[{Key=Name,Value=%s},{Key=Project,Value=reverse-dr},{Key=Environment,Value=poc}]' "$1"; }
 
+# Le associazioni e le route vengono riconciliate anche quando la route table
+# esiste gia': e' il caso tipico dopo un'interruzione a meta' sezione.
+_ensure_route_table_association() { # route_table_id subnet_id
+  local route_table_id="$1" subnet_id="$2" current association_id
+  current=$(aws ec2 describe-route-tables \
+    --filters "Name=association.subnet-id,Values=${subnet_id}" \
+    --query 'RouteTables[0].RouteTableId' --output text)
+  if [ "$current" = "$route_table_id" ]; then
+    return 0
+  fi
+  if [ "$current" = "None" ] || [ -z "$current" ]; then
+    aws ec2 associate-route-table --route-table-id "$route_table_id" \
+      --subnet-id "$subnet_id" >/dev/null
+    return 0
+  fi
+  association_id=$(aws ec2 describe-route-tables \
+    --filters "Name=association.subnet-id,Values=${subnet_id}" \
+    --query "RouteTables[0].Associations[?SubnetId=='${subnet_id}'].RouteTableAssociationId | [0]" \
+    --output text)
+  aws ec2 replace-route-table-association --association-id "$association_id" \
+    --route-table-id "$route_table_id" >/dev/null
+}
+
+_ensure_default_route() { # route_table_id (--gateway-id|--instance-id) target
+  local route_table_id="$1"; shift
+  aws ec2 replace-route --route-table-id "$route_table_id" \
+    --destination-cidr-block 0.0.0.0/0 "$@" >/dev/null 2>&1 \
+    || aws ec2 create-route --route-table-id "$route_table_id" \
+      --destination-cidr-block 0.0.0.0/0 "$@" >/dev/null
+}
+
+# _ensure_kubeconfig — configura kubectl/helm verso il cluster e verifica che
+# l'API server risponda. Va chiamata da OGNI sezione che usa kubectl o helm: il
+# fallback "localhost:8080 connection refused" significa proprio kubeconfig
+# assente. Idempotente, sicura da richiamare piu' volte.
+_ensure_kubeconfig() {
+  aws eks update-kubeconfig --name "$PREFIX" >/dev/null 2>&1 \
+    || die "update-kubeconfig fallito: il cluster ${PREFIX} esiste? Esegui prima s06_eks."
+  if ! kubectl cluster-info --request-timeout=15s >/dev/null 2>&1; then
+    warn "kubeconfig impostato ma l'API server EKS non risponde."
+    warn "Il cluster ha l'endpoint PRIVATO (scelta di s06_eks): da questa macchina"
+    warn "e' raggiungibile solo con accesso alla VPC (bastion/VPN)."
+    warn "Per una PoC puoi aprirlo al tuo IP:  bash provision.sh enable_public_endpoint"
+    die "Cluster non raggiungibile: risolvi l'accesso e riprova la sezione."
+  fi
+}
+
+# I componenti Helm di s15 hanno bisogno di almeno un worker schedulabile. Il
+# control plane puo' essere ACTIVE anche quando il managed node group e' fallito:
+# distinguiamo i due casi prima di avviare rollout che altrimenti scadono senza
+# spiegare la causa reale.
+_ensure_cluster_nodes_ready() {
+  local nodes
+  nodes=$(kubectl get nodes -o name --request-timeout=15s 2>/dev/null || true)
+  [ -n "$nodes" ] || die "Nessun nodo EKS registrato. Rilancia s06_eks; lo script recupera automaticamente un node group in CREATE_FAILED."
+  if ! kubectl wait --for=condition=Ready nodes --all \
+      --timeout="${NODE_READY_TIMEOUT:-10m}"; then
+    kubectl get nodes -o wide >&2 || true
+    die "I nodi EKS esistono ma non sono Ready: verifica CNI, ruolo IAM ed egress NAT."
+  fi
+}
+
+# enable_public_endpoint — apre l'endpoint EKS al solo IP pubblico corrente,
+# mantenendolo anche privato. Utile quando si opera da una macchina fuori dalla
+# VPC (es. WSL aziendale). E' una scelta di accesso da dichiarare come limite PoC.
+enable_public_endpoint() {
+  local ip
+  ip=$(curl -s https://checkip.amazonaws.com || true)
+  [ -n "$ip" ] || die "Impossibile determinare l'IP pubblico corrente."
+  log "Apro l'endpoint EKS a ${ip}/32 (resta anche privato)."
+  aws eks update-cluster-config --name "$PREFIX" \
+    --resources-vpc-config "endpointPublicAccess=true,endpointPrivateAccess=true,publicAccessCidrs=${ip}/32" >/dev/null
+  log "Aggiornamento in corso (~qualche minuto); attendo che il cluster torni ACTIVE..."
+  aws eks wait cluster-active --name "$PREFIX"
+  warn "Endpoint EKS pubblico ma limitato a ${ip}/32. Su rete aziendale l'IP di"
+  warn "uscita puo' cambiare: se kubectl smette di rispondere, rilancia questo"
+  warn "comando. Dichiara questa apertura come limite PoC."
+}
+
 # =============================================================================
 # preflight — §1.3 / §1.4: regione opt-in e disponibilita' servizi
 # =============================================================================
@@ -291,10 +370,12 @@ s04_network() {
     vpc_id=$(aws ec2 create-vpc --cidr-block "$VPC_CIDR" \
       --tag-specifications "ResourceType=vpc,Tags=$(tag_spec "${PREFIX}-vpc")" \
       --query 'Vpc.VpcId' --output text)
-    aws ec2 modify-vpc-attribute --vpc-id "$vpc_id" --enable-dns-support
-    aws ec2 modify-vpc-attribute --vpc-id "$vpc_id" --enable-dns-hostnames
   fi
   save_state VPC_ID "$vpc_id"
+  # EKS richiede DNS VPC funzionante. Applicalo anche a una VPC trovata dopo un
+  # run interrotto tra create-vpc e modify-vpc-attribute.
+  aws ec2 modify-vpc-attribute --vpc-id "$VPC_ID" --enable-dns-support
+  aws ec2 modify-vpc-attribute --vpc-id "$VPC_ID" --enable-dns-hostnames
   log "VPC $VPC_ID"
 
   # Quattro subnet. L'asimmetria e' deliberata (§4.2): witness minime.
@@ -337,9 +418,16 @@ s04_network() {
     igw_id=$(aws ec2 create-internet-gateway \
       --tag-specifications "ResourceType=internet-gateway,Tags=$(tag_spec "${PREFIX}-igw")" \
       --query 'InternetGateway.InternetGatewayId' --output text)
-    aws ec2 attach-internet-gateway --internet-gateway-id "$igw_id" --vpc-id "$VPC_ID"
   fi
   save_state IGW_ID "$igw_id"
+  local attached_vpc
+  attached_vpc=$(aws ec2 describe-internet-gateways --internet-gateway-ids "$IGW_ID" \
+    --query 'InternetGateways[0].Attachments[0].VpcId' --output text)
+  if [ "$attached_vpc" = "None" ] || [ -z "$attached_vpc" ]; then
+    aws ec2 attach-internet-gateway --internet-gateway-id "$IGW_ID" --vpc-id "$VPC_ID"
+  elif [ "$attached_vpc" != "$VPC_ID" ]; then
+    die "Internet Gateway ${IGW_ID} gia' collegato alla VPC ${attached_vpc}, attesa ${VPC_ID}."
+  fi
 
   # Route table pubblica
   local rtb_pub
@@ -350,11 +438,10 @@ s04_network() {
     rtb_pub=$(aws ec2 create-route-table --vpc-id "$VPC_ID" \
       --tag-specifications "ResourceType=route-table,Tags=$(tag_spec "${PREFIX}-public")" \
       --query 'RouteTable.RouteTableId' --output text)
-    aws ec2 create-route --route-table-id "$rtb_pub" \
-      --destination-cidr-block 0.0.0.0/0 --gateway-id "$IGW_ID"
-    aws ec2 associate-route-table --route-table-id "$rtb_pub" --subnet-id "$PUB_PRIMARY_SUBNET"
-    aws ec2 associate-route-table --route-table-id "$rtb_pub" --subnet-id "$PUB_WITNESS_SUBNET"
   fi
+  _ensure_default_route "$rtb_pub" --gateway-id "$IGW_ID"
+  _ensure_route_table_association "$rtb_pub" "$PUB_PRIMARY_SUBNET"
+  _ensure_route_table_association "$rtb_pub" "$PUB_WITNESS_SUBNET"
   save_state RTB_PUBLIC "$rtb_pub"
 
   _nat_instance
@@ -373,16 +460,30 @@ _nat_instance() {
     sg_id=$(aws ec2 create-security-group --group-name "${PREFIX}-nat" \
       --description "Forward egress only from the primary private subnet" \
       --vpc-id "$VPC_ID" --query GroupId --output text)
-    # Inbound solo dalla subnet privata primaria: impedisce alla NAT di
-    # diventare un proxy aperto.
-    aws ec2 authorize-security-group-ingress --group-id "$sg_id" \
-      --ip-permissions "IpProtocol=-1,IpRanges=[{CidrIp=${PRIMARY_PRIVATE_CIDR}}]"
   fi
+  # Inbound solo dalla subnet privata primaria: impedisce alla NAT di diventare
+  # un proxy aperto. Riconcilialo anche se il SG proviene da un run interrotto.
+  local sg_out
+  if ! sg_out=$(aws ec2 authorize-security-group-ingress --group-id "$sg_id" \
+      --ip-permissions "IpProtocol=-1,IpRanges=[{CidrIp=${PRIMARY_PRIVATE_CIDR}}]" 2>&1); then
+    case "$sg_out" in
+      *InvalidPermission.Duplicate*) : ;;
+      *) die "Impossibile riconciliare l'ingress del security group NAT: ${sg_out}" ;;
+    esac
+  fi
+  local unexpected_ingress
+  unexpected_ingress=$(aws ec2 describe-security-group-rules \
+    --filters "Name=group-id,Values=${sg_id}" \
+    --query "SecurityGroupRules[?IsEgress==\`false\` && !(IpProtocol=='-1' && CidrIpv4=='${PRIMARY_PRIVATE_CIDR}')].SecurityGroupRuleId" \
+    --output text)
+  [ -z "$unexpected_ingress" ] || [ "$unexpected_ingress" = "None" ] \
+    || die "Security group NAT con ingress inattese (${unexpected_ingress}). Rimuovile esplicitamente e rilancia s04_network."
   save_state NAT_SG "$sg_id"
 
   local nat_id
   nat_id=$(aws ec2 describe-instances \
-    --filters "Name=tag:Name,Values=${PREFIX}-nat" "Name=instance-state-name,Values=pending,running,stopped" \
+    --filters "Name=tag:Name,Values=${PREFIX}-nat" "Name=vpc-id,Values=${VPC_ID}" \
+      "Name=instance-state-name,Values=pending,running,stopping,stopped" \
     --query 'Reservations[0].Instances[0].InstanceId' --output text)
   if [ "$nat_id" = "None" ]; then
     # AMI Amazon Linux 2023 arm64 dal parametro SSM pubblico: coerente con
@@ -412,12 +513,32 @@ UD
       --block-device-mappings '[{"DeviceName":"/dev/xvda","Ebs":{"VolumeSize":8,"VolumeType":"gp3","Encrypted":true,"DeleteOnTermination":true}}]' \
       --tag-specifications "ResourceType=instance,Tags=$(tag_spec "${PREFIX}-nat")" \
       --query 'Instances[0].InstanceId' --output text)
-    aws ec2 wait instance-running --instance-ids "$nat_id"
-    # Passo che si dimentica e rende la NAT inutile senza errori: disattivare il
-    # source/dest check.
-    aws ec2 modify-instance-attribute --instance-id "$nat_id" --no-source-dest-check
   fi
   save_state NAT_INSTANCE "$nat_id"
+
+  local nat_state
+  nat_state=$(aws ec2 describe-instances --instance-ids "$NAT_INSTANCE" \
+    --query 'Reservations[0].Instances[0].State.Name' --output text)
+  case "$nat_state" in
+    pending)
+      aws ec2 wait instance-running --instance-ids "$NAT_INSTANCE"
+      ;;
+    stopped)
+      aws ec2 start-instances --instance-ids "$NAT_INSTANCE" >/dev/null
+      aws ec2 wait instance-running --instance-ids "$NAT_INSTANCE"
+      ;;
+    stopping)
+      aws ec2 wait instance-stopped --instance-ids "$NAT_INSTANCE"
+      aws ec2 start-instances --instance-ids "$NAT_INSTANCE" >/dev/null
+      aws ec2 wait instance-running --instance-ids "$NAT_INSTANCE"
+      ;;
+    running) : ;;
+    *) die "Istanza NAT in stato non recuperabile automaticamente: ${nat_state}" ;;
+  esac
+  # Passo che si dimentica e rende la NAT inutile senza errori: disattivare il
+  # source/dest check a ogni run, non solo subito dopo la create.
+  aws ec2 modify-instance-attribute --instance-id "$NAT_INSTANCE" --no-source-dest-check
+  aws ec2 wait instance-status-ok --instance-ids "$NAT_INSTANCE"
 
   # Elastic IP
   local eip_alloc
@@ -428,7 +549,13 @@ UD
       --tag-specifications "ResourceType=elastic-ip,Tags=$(tag_spec "${PREFIX}-nat")" \
       --query AllocationId --output text)
   fi
-  aws ec2 associate-address --allocation-id "$eip_alloc" --instance-id "$NAT_INSTANCE" >/dev/null
+  local eip_instance
+  eip_instance=$(aws ec2 describe-addresses --allocation-ids "$eip_alloc" \
+    --query 'Addresses[0].InstanceId' --output text)
+  if [ "$eip_instance" != "$NAT_INSTANCE" ]; then
+    aws ec2 associate-address --allocation-id "$eip_alloc" \
+      --instance-id "$NAT_INSTANCE" >/dev/null
+  fi
   save_state NAT_EIP_ALLOC "$eip_alloc"
 }
 
@@ -443,10 +570,9 @@ _private_route_table() {
     rtb=$(aws ec2 create-route-table --vpc-id "$VPC_ID" \
       --tag-specifications "ResourceType=route-table,Tags=$(tag_spec "${PREFIX}-private-primary")" \
       --query 'RouteTable.RouteTableId' --output text)
-    aws ec2 create-route --route-table-id "$rtb" \
-      --destination-cidr-block 0.0.0.0/0 --instance-id "$NAT_INSTANCE"
-    aws ec2 associate-route-table --route-table-id "$rtb" --subnet-id "$PRIV_PRIMARY_SUBNET"
   fi
+  _ensure_default_route "$rtb" --instance-id "$NAT_INSTANCE"
+  _ensure_route_table_association "$rtb" "$PRIV_PRIMARY_SUBNET"
   save_state RTB_PRIVATE "$rtb"
 }
 
@@ -618,7 +744,7 @@ _eks_addons() {
 _node_group() {
   # §6.5 — launch template per gp3 cifrato + IMDSv2, poi node group su UNA sola
   # subnet (la primaria): tutti i pod nella AZ primaria, per design.
-  local lt_id
+  local lt_id status
   lt_id=$(aws ec2 describe-launch-templates \
     --filters "Name=launch-template-name,Values=${PREFIX}-node" \
     --query 'LaunchTemplates[0].LaunchTemplateId' --output text 2>/dev/null || echo "None")
@@ -630,7 +756,31 @@ _node_group() {
       }' --query 'LaunchTemplate.LaunchTemplateId' --output text)
   fi
 
-  if ! aws eks describe-nodegroup --cluster-name "$PREFIX" --nodegroup-name "${PREFIX}-primary" >/dev/null 2>&1; then
+  _node_group_health() {
+    local issues
+    issues=$(aws eks describe-nodegroup --cluster-name "$PREFIX" \
+      --nodegroup-name "${PREFIX}-primary" \
+      --query 'nodegroup.health.issues[].[code,message,join(`,`, resourceIds)]' \
+      --output text 2>/dev/null || true)
+    [ -z "$issues" ] || [ "$issues" = "None" ] \
+      || warn "Diagnostica node group: ${issues}"
+  }
+
+  _node_group_status() {
+    local out
+    if out=$(aws eks describe-nodegroup --cluster-name "$PREFIX" \
+        --nodegroup-name "${PREFIX}-primary" --query 'nodegroup.status' \
+        --output text 2>&1); then
+      printf '%s\n' "$out"
+      return 0
+    fi
+    case "$out" in
+      *ResourceNotFoundException*) printf '%s\n' "ABSENT" ;;
+      *) die "Impossibile leggere il node group EKS: ${out}" ;;
+    esac
+  }
+
+  _create_node_group() {
     aws eks create-nodegroup --cluster-name "$PREFIX" --nodegroup-name "${PREFIX}-primary" \
       --node-role "arn:aws:iam::${ACCOUNT_ID}:role/${PREFIX}-eks-node" \
       --subnets "$PRIV_PRIMARY_SUBNET" \
@@ -640,8 +790,57 @@ _node_group() {
       --scaling-config minSize=1,maxSize=2,desiredSize=1 \
       --labels "reverse-dr.io/failure-domain=primary-az,reverse-dr.io/workload-tier=application" >/dev/null
     log "Creazione node group (~3 min)..."
-    aws eks wait nodegroup-active --cluster-name "$PREFIX" --nodegroup-name "${PREFIX}-primary"
-  fi
+  }
+
+  _wait_node_group_active() {
+    if ! aws eks wait nodegroup-active --cluster-name "$PREFIX" \
+        --nodegroup-name "${PREFIX}-primary"; then
+      _node_group_health
+      die "Il node group non e' diventato ACTIVE. Correggi la causa indicata e rilancia s06_eks."
+    fi
+    log "Node group ACTIVE."
+  }
+
+  status=$(_node_group_status)
+
+  case "$status" in
+    ACTIVE)
+      log "Node group gia' ACTIVE."
+      ;;
+    CREATING|UPDATING)
+      log "Node group in stato ${status}; riprendo l'attesa."
+      _wait_node_group_active
+      ;;
+    ABSENT|None|'')
+      _create_node_group
+      _wait_node_group_active
+      ;;
+    CREATE_FAILED)
+      warn "Node group in CREATE_FAILED: mostro la causa e ricreo la risorsa fallita."
+      _node_group_health
+      aws eks delete-nodegroup --cluster-name "$PREFIX" \
+        --nodegroup-name "${PREFIX}-primary" >/dev/null
+      aws eks wait nodegroup-deleted --cluster-name "$PREFIX" \
+        --nodegroup-name "${PREFIX}-primary"
+      _create_node_group
+      _wait_node_group_active
+      ;;
+    DELETING)
+      log "Node group in eliminazione; attendo e lo ricreo."
+      aws eks wait nodegroup-deleted --cluster-name "$PREFIX" \
+        --nodegroup-name "${PREFIX}-primary"
+      _create_node_group
+      _wait_node_group_active
+      ;;
+    DEGRADED|DELETE_FAILED)
+      _node_group_health
+      die "Node group in stato ${status}: non lo elimino automaticamente per evitare interruzioni a workload esistenti."
+      ;;
+    *)
+      _node_group_health
+      die "Stato node group inatteso: ${status}."
+      ;;
+  esac
 }
 
 # =============================================================================
@@ -874,8 +1073,7 @@ s12_bootstrap() {
   [ -r "$BFF_KEY_PEM" ]  || die "PEM chiave BFF non leggibile: $BFF_KEY_PEM (imposta BFF_PFX o BFF_KEY_PEM, vedi §2.1)"
   [ -r "$BFF_CERT_PEM" ] || die "PEM certificato BFF non leggibile: $BFF_CERT_PEM (imposta BFF_PFX o BFF_CERT_PEM, vedi §2.1)"
 
-  aws eks update-kubeconfig --name "$PREFIX"
-  kubectl get nodes || die "kubectl non raggiunge il cluster: endpoint privato (§12.1) o access entry mancante."
+  _ensure_kubeconfig
 
   umask 077
   local master_arn master_pw app_pw master_url
@@ -1093,7 +1291,16 @@ _lambda() {
 # s15_platform — §15: External Secrets e AWS Load Balancer Controller (helm)
 # =============================================================================
 s15_platform() {
+  if [ -z "${ACCOUNT_ID:-}" ]; then
+    save_state ACCOUNT_ID "$(aws sts get-caller-identity --query Account --output text)"
+  fi
+  if [ -z "${VPC_ID:-}" ]; then
+    save_state VPC_ID "$(aws eks describe-cluster --name "$PREFIX" \
+      --query 'cluster.resourcesVpcConfig.vpcId' --output text)"
+  fi
   require_vars VPC_ID ACCOUNT_ID
+  _ensure_kubeconfig
+  _ensure_cluster_nodes_ready
   local k8s="${REPO_ROOT}/automazione/infra/aws/kubernetes"
 
   helm repo add external-secrets https://charts.external-secrets.io >/dev/null 2>&1 || true
@@ -1126,6 +1333,7 @@ s16_overlay() {
   require_vars ACCOUNT_ID REGISTRY IMAGE_TAG BACKUP_IMAGE_TAG BACKUP_BUCKET CERT_ARN APP_HOST
   require_vars ENTRA_API_CLIENT_ID ENTRA_BFF_CLIENT_ID ENTRA_ISSUER_URL \
     ENTRA_JWKS_URL ENTRA_AUTHORIZATION_ENDPOINT ENTRA_TOKEN_ENDPOINT ENTRA_END_SESSION_ENDPOINT ENTRA_API_SCOPE
+  _ensure_kubeconfig
   local k8s="${REPO_ROOT}/automazione/infra/aws/kubernetes"
   local overlay="$STATE_DIR/overlay"; rm -rf "$overlay"; mkdir -p "$overlay"
   cp "$k8s"/*.yaml "$overlay/"
@@ -1176,6 +1384,7 @@ s16_overlay() {
 # s17_migrations — §17: schema del database
 # =============================================================================
 s17_migrations() {
+  _ensure_kubeconfig
   # Le immagini non migrano all'avvio (scelta deliberata). apply-migrations.sh
   # ha DB_SECRET hardcoded al nome on-prem: su AWS il secret e' helios-bff-database.
   DB_SECRET=helios-bff-database bash "${REPO_ROOT}/automazione/infra/onprem/scripts/apply-migrations.sh" \
@@ -1190,6 +1399,7 @@ s17_migrations() {
 # =============================================================================
 verify() {
   require_vars APP_HOST BACKUP_BUCKET
+  _ensure_kubeconfig
   log "Hostname ALB a cui puntare il record DNS di ${APP_HOST}:"
   kubectl -n "$K8S_NAMESPACE" get ingress helios-public \
     -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'; echo
