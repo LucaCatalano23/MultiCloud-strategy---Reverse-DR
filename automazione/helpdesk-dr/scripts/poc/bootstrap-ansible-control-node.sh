@@ -61,12 +61,16 @@ lxc_retry file push "${HELPDESK_DR_CONFIG_PATH}" \
   "${ANSIBLE_NODE_NAME}/etc/helpdesk-dr/config.env" \
   --mode=0600 --uid=0 --gid=0
 
+# Un bootstrap ripetuto sostituisce il clone usato dal processo: fermarlo prima
+# evita che una vecchia istanza continui a eseguire file cancellati a meta'.
+exec_ansible systemctl stop helpdesk-dr-controller.service 2>/dev/null || true
 exec_ansible bash -lc "rm -rf ${CONTROL_DIR} && git clone ${APP_REPOSITORY_URL} ${CONTROL_DIR}"
 exec_ansible bash -lc "
   set -euo pipefail
   test -f ${CONTROL_DIR}/ansible/ansible.cfg
   test -f ${CONTROL_DIR}/ansible/inventory.ini
   test -f ${CONTROL_DIR}/ansible/playbooks/failover.yml
+  test -f ${CONTROL_DIR}/systemd/helpdesk-dr-controller.service
   test -f ${CONTROL_DIR}/infra/onprem/kustomization.yaml
   test -f ${CONTROL_DIR}/contracts/deployment-contract.json
   cd ${CONTROL_DIR}
@@ -78,8 +82,25 @@ exec_ansible bash -lc "
 exec_ansible chmod 0755 "${CONTROL_DIR}/scripts/poc/helpdesk-dr.sh"
 exec_ansible ln -sfn "${CONTROL_DIR}/scripts/poc/helpdesk-dr.sh" /usr/local/bin/helpdesk-dr
 
+# Fail closed: unattended promotion is started only after the operator has
+# explicitly armed it and the selected lab/ALB probe passes configuration
+# validation. This prevents a missing ALB hostname from looking like an outage.
+exec_ansible helpdesk-dr failover/dr-controller validate
+
+# Il controller non deve dipendere da una shell lasciata aperta: systemd lo
+# avvia subito, lo riavvia in caso di crash e lo rende attivo a ogni boot del
+# coordinatore. Il cutback resta deliberatamente manuale.
+exec_ansible install -m 0644 \
+  "${CONTROL_DIR}/systemd/helpdesk-dr-controller.service" \
+  /etc/systemd/system/helpdesk-dr-controller.service
+exec_ansible systemctl daemon-reload
+exec_ansible systemctl enable --now helpdesk-dr-controller.service
+exec_ansible systemctl is-enabled --quiet helpdesk-dr-controller.service
+exec_ansible systemctl is-active --quiet helpdesk-dr-controller.service
+
 exec_ansible bash -lc "cd ${CONTROL_DIR} && git rev-parse --short HEAD && lxc list --format compact >/dev/null"
 
 echo "Ansible control node ready."
+echo "Automatic failover controller: active and enabled."
 echo "Run scripts from ansible-node, for example:"
 echo "  lxc exec ${ANSIBLE_NODE_NAME} -- helpdesk-dr poc/healthcheck"

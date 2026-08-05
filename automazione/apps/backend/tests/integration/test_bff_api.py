@@ -1,13 +1,12 @@
-from dataclasses import dataclass
 from typing import Any
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
+from tests.fakes import principal
 
 from helios_bff.application.auth_service import CompletedLogin, LoginStart
 from helios_bff.infrastructure.service_clients import UpstreamServiceError, UpstreamStatusError
 from helios_bff.presentation.api import BffSite, create_app
-from tests.fakes import principal
 
 
 class StubBrowserAuth:
@@ -35,8 +34,9 @@ class StubBrowserAuth:
         assert session_cookie == "opaque-session"
         return "server-side-access-token"
 
-    async def logout(self, session_cookie: str, *, csrf_cookie: str, csrf_header: str) -> None:
+    async def logout(self, session_cookie: str, *, csrf_cookie: str, csrf_header: str) -> str:
         self.logout_args = (session_cookie, csrf_cookie, csrf_header)
+        return "https://identity.example.test/logout?post_logout_redirect_uri=canonical"
 
     async def ping(self) -> bool:
         return True
@@ -221,13 +221,14 @@ def test_bff_logout_forwards_double_submit_values_and_clears_cookies() -> None:
     with TestClient(app, base_url="https://desk.example.test") as client:
         client.cookies.set("__Host-helios_session", "opaque-session")
         client.cookies.set("__Host-helios_csrf", "csrf-token")
-        response = client.post(
-            "/api/v1/auth/logout", headers={"X-CSRF-Token": "csrf-token"}
-        )
+        response = client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": "csrf-token"})
 
-    assert response.status_code == 204
+    assert response.status_code == 200
+    assert response.json() == {
+        "redirectUrl": "https://identity.example.test/logout?post_logout_redirect_uri=canonical"
+    }
     assert auth.logout_args == ("opaque-session", "csrf-token", "csrf-token")
-    assert "__Host-helios_session=\"\"" in response.headers["set-cookie"]
+    assert '__Host-helios_session=""' in response.headers["set-cookie"]
 
 
 VALID_TICKET_PAYLOAD = {
@@ -424,9 +425,7 @@ def test_bff_maps_automation_upstream_failure_to_502() -> None:
     app = create_app(
         auth=StubBrowserAuth(authenticated=True),
         tickets=StubTicketClient(),
-        automation=StubAutomationClient(
-            UpstreamServiceError("automation service request failed")
-        ),
+        automation=StubAutomationClient(UpstreamServiceError("automation service request failed")),
         platform=StubPlatformProbe(),
         site=SITE,
     )

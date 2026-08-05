@@ -13,7 +13,7 @@ Questo modulo simula un disaster recovery inverso cloud -> on-premise.
 - `cloud-k3s`: macchina esterna alla rete aziendale LXC, sempre dentro WSL/LXD. Ospita il cluster Kubernetes primario. Dopo la rimozione del monolite non vi gira più alcuna applicazione: resta come **failure domain** che il drill spegne.
 - `k3s-datacenter`: nodo on-prem nella rete aziendale LXC. Ospita il cluster Kubernetes di DR e i workload Helios.
 - `git-server`: punto di verita per applicativo, manifest e runbook.
-- `server-dns`: DNS aziendale. In stato normale punta `helpdesk.azienda.lan` al cloud; in DR lo punta on-prem.
+- `server-dns`: DNS split-horizon del lab. In stato normale punta `heliospoc.ggg.it` al cloud; in DR lo punta on-prem.
 - `ansible-node`: orchestratore operativo per backup, restore e cutover.
 
 ## Architettura
@@ -29,8 +29,8 @@ on-prem k3s-datacenter
   postgres applicativo restored from backup (namespace helpdesk, database helios)
 
 server-dns
-  helpdesk.azienda.lan -> cloud ingress, normal mode
-  helpdesk.azienda.lan -> on-prem ingress, DR mode
+  heliospoc.ggg.it -> cloud ingress, normal mode
+  heliospoc.ggg.it -> on-prem ingress, DR mode
 
 dr-controller
   osserva il data plane primario
@@ -89,7 +89,18 @@ I segreti del sito DR vanno prima scritti in OpenBao con `automazione/infra/vaul
 
 ## Esecuzione da ansible-node
 
-Per rendere `ansible-node` il control node reale, pubblica prima il repository su `git-server`, clona il source of truth su `ansible-node` e abilita il client LXD verso il socket dell'host. Il bootstrap disabilita il daemon LXD annidato nello snap, perché sul control node serve soltanto il client:
+Per rendere `ansible-node` il control node reale, configura prima il probe nel
+`config.env` locale. Il bootstrap fallisce chiuso finché lo stato non è stato
+inizializzato dal deploy dello standby e non imposti esplicitamente:
+
+```bash
+DR_AUTO_FAILOVER_ENABLED=true
+```
+
+Nel cloud reale aggiungi anche il target ALB descritto sotto. Pubblica quindi il
+repository su `git-server`, clona il source of truth su `ansible-node` e abilita
+il client LXD verso il socket dell'host. Il bootstrap disabilita il daemon LXD
+annidato nello snap, perché sul control node serve soltanto il client:
 
 ```bash
 bash scripts/poc/bootstrap-ansible-control-node.sh
@@ -120,8 +131,94 @@ bash scripts/poc/ansible-run.sh failover/run-ansible-failover
 Failover automatico:
 
 ```bash
-bash scripts/poc/ansible-run.sh failover/dr-controller
+systemctl status helpdesk-dr-controller.service --no-pager
+journalctl -u helpdesk-dr-controller.service -f
 ```
+
+Il servizio viene installato, abilitato e avviato da
+`bootstrap-ansible-control-node.sh`: non serve lasciare una shell aperta e il
+controller riparte automaticamente con `ansible-node`. Tre failure consecutive
+con i default correnti avviano da sole restore, preflight, promozione e cutover
+DNS. Il ritorno al cloud resta manuale perche' richiede riconciliazione dei dati.
+
+### Target del cloud: hostname ALB, non IP
+
+Nel laboratorio il target resta `CLOUD_K3S_IP=10.20.0.10`. Su AWS non salvare
+gli IP restituiti da `nslookup`: i nodi di un Application Load Balancer possono
+cambiare. Recupera invece il DNS name pubblicato dall'Ingress:
+
+```bash
+kubectl -n helios-desk get ingress helios-public \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'; echo
+```
+
+Inserisci il risultato nel `config.env` locale distribuito ad `ansible-node`:
+
+```bash
+CLOUD_PROBE_MODE=https
+CLOUD_TARGET_HOST=k8s-helios-xxxxxxxx.eu-west-1.elb.amazonaws.com
+DR_AUTO_FAILOVER_ENABLED=true
+```
+
+Il controller usa `curl --connect-to`: apre la connessione verso il DNS name
+dell'ALB, ma conserva `heliospoc.ggg.it` come Host e TLS SNI. Cosi' il probe
+continua a osservare direttamente AWS anche quando il DNS canonico punta gia'
+al DR. Per il traffico utente configura `heliospoc.ggg.it` come CNAME verso
+l'ALB se e' un record nella zona padre `ggg.it`, oppure come Route 53 Alias A;
+non configurare mai un A record con gli IP correnti dell'ALB.
+
+### Senza ACM pubblico: self-signed HTTPS (preferito)
+
+Se non puoi avere un certificato ACM *validato pubblicamente* ma puoi importare
+un self-signed in ACM (`aws acm import-certificate`, gia' cio' che fa
+`provision.sh`), l'edge resta **HTTPS**: i cookie `__Host-*`, il CSRF e la
+callback OIDC continuano a funzionare. E' la strada preferita quando manca un
+ACM pubblico. In `config.env`, puntando anche direttamente all'IP dell'ALB:
+
+```bash
+CLOUD_PROBE_MODE=https
+CLOUD_TARGET_HOST=<IP o DNS name dell'ALB>
+CLOUD_TARGET_INSECURE=true   # oppure CLOUD_TARGET_CA_FILE=/percorso/al/self-signed.crt
+DR_AUTO_FAILOVER_ENABLED=true
+```
+
+Il cert self-signed non e' nel trust store, quindi la verifica va rilassata:
+`CLOUD_TARGET_CA_FILE` fissa quel cert come CA da fidare (piu' severo, richiede
+di distribuirlo ad `ansible-node`), oppure `CLOUD_TARGET_INSECURE=true` salta la
+verifica (piu' semplice). Sono mutuamente esclusivi. Con `--cacert` il SAN del
+cert deve includere `heliospoc.ggg.it`. Anche qui il probe usa `--connect-to`
+verso l'IP tenendo `heliospoc.ggg.it` come Host/SNI. L'IP dell'ALB e' dinamico e
+va aggiornato a mano quando cambia.
+
+### Ultima spiaggia: probe HTTP puro (nessun cert sull'ALB)
+
+Solo se non puoi caricare **nessun** cert sull'ALB (ne' ACM, ne' self-signed
+importato, ne' IAM server certificate). Punta all'IP in chiaro:
+
+```bash
+CLOUD_PROBE_MODE=http
+CLOUD_TARGET_HOST=<IP pubblico dell'ALB>
+CLOUD_TARGET_PORT=80
+DR_AUTO_FAILOVER_ENABLED=true
+```
+
+Come in `https`, il probe usa `curl --connect-to`: apre la connessione verso
+l'IP indicato ma conserva `heliospoc.ggg.it` come Host, cosi' la regola
+host-based dell'Ingress instrada comunque verso `helios-bff`.
+
+Limiti dichiarati di questa modalita', accettati consapevolmente:
+
+- **Rompe il login utente reale**: su HTTP in chiaro il browser rifiuta i cookie
+  `__Host-*` e la callback OIDC non e' same-origin HTTPS. Va bene solo per il
+  probe di readiness / ambienti non-produzione; per gli utenti reali preferisci
+  il self-signed HTTPS sopra.
+- **Nessuna verifica TLS**: il traffico del probe e' in chiaro.
+- **L'IP dell'ALB non e' stabile**: AWS puo' cambiarlo; va aggiornato a mano nel
+  `config.env` di `ansible-node`.
+- **L'ALB deve esporre l'app su HTTP senza `ssl-redirect`**: con
+  `alb.ingress.kubernetes.io/ssl-redirect` attivo il listener `:80` risponde
+  `301` e il probe (che pretende `200`) fallirebbe, innescando un failover
+  falso. Usa il manifest opt-in `infra/aws/kubernetes/ingress-http-only.yaml`.
 
 Per una singola valutazione, utile in demo:
 
@@ -133,6 +230,9 @@ Le soglie sono in `config.env`:
 
 - `DR_CONTROLLER_FAILURE_THRESHOLD`: quanti check falliti prima del failover.
 - `DR_CONTROLLER_INTERVAL_SECONDS`: intervallo tra i check.
+- `DR_CONTROLLER_RETRY_COOLDOWN_SECONDS`: attesa dopo una promozione fallita.
+- `DR_AUTO_FAILOVER_ENABLED`: interlock esplicito richiesto prima che il
+  bootstrap possa avviare il servizio.
 
 ## K8GB
 

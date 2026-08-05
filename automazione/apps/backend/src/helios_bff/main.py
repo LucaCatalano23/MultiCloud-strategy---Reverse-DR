@@ -84,6 +84,9 @@ def build_app() -> FastAPI:
             client_id=settings.oidc_client_id,
             credential=_build_client_credential(settings),
             redirect_uri=settings.oidc_redirect_uri,
+            end_session_endpoint=settings.oidc_end_session_endpoint,
+            post_logout_redirect_uri=settings.oidc_post_logout_redirect_uri,
+            include_client_id_in_end_session=settings.identity_provider == "keycloak",
             scopes=settings.scopes,
         ),
         http_client,
@@ -93,6 +96,7 @@ def build_app() -> FastAPI:
         oidc_client,
         id_token_authenticator,
         FernetSecretProtector(settings.session_encryption_key.get_secret_value()),
+        expected_issuer=settings.oidc_issuer_url,
     )
     tickets = HttpTicketClient(settings.ticket_service_url, http_client)
     automation = HttpAutomationClient(settings.automation_service_url, http_client)

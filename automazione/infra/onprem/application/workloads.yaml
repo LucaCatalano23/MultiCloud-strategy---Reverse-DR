@@ -328,6 +328,11 @@ spec:
                 configMapKeyRef:
                   name: helios-onprem-config
                   key: IDENTITY_PROVIDER
+            - name: APPLICATION_PUBLIC_ORIGIN
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: APPLICATION_PUBLIC_ORIGIN
             - name: OIDC_ISSUER_URL
               valueFrom:
                 configMapKeyRef:
@@ -363,6 +368,11 @@ spec:
                 configMapKeyRef:
                   name: helios-onprem-config
                   key: OIDC_CLIENT_ID
+            - name: OIDC_CLIENT_AUTH_METHOD
+              valueFrom:
+                configMapKeyRef:
+                  name: helios-onprem-config
+                  key: OIDC_CLIENT_AUTH_METHOD
             - name: OIDC_REDIRECT_URI
               valueFrom:
                 configMapKeyRef:

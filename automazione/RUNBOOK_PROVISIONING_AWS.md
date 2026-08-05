@@ -226,7 +226,7 @@ può essere creato senza l'ARN del certificato.
 ### 3.1 Scegliere l'hostname
 
 ```bash
-export APP_HOST=<hostname-applicativo>     # es. helios.tuodominio.example
+export APP_HOST=heliospoc.ggg.it           # origin canonico cloud/on-prem
 ```
 
 L'hostname deve essere HTTPS e stabile perché il BFF usa cookie `__Host-*`, che richiedono

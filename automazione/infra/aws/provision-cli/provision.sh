@@ -52,14 +52,8 @@ NAT_INSTANCE_TYPE="t4g.nano"
 NODE_INSTANCE_TYPE="t3.medium"
 K8S_NAMESPACE="helios-desk"
 
-# CloudWatch: nella PoC e' solo logging diagnostico, non tocca le metriche
-# RPO/RTO (che vivono nella tabella dr_telemetry in PostgreSQL). Qui si sceglie
-# quanto tenerne acceso. Default cost-conscious: solo l'authenticator del control
-# plane EKS, utile proprio durante il bring-up manuale per capire perche' un
-# principal viene rifiutato. Metti "api,audit,authenticator" per il set completo,
-# o stringa vuota per spegnerlo del tutto.
-EKS_LOG_TYPES="${EKS_LOG_TYPES:-authenticator}"
-LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-30}"
+# I log gestiti AWS restano disabilitati. Le metriche RPO/RTO applicative vivono
+# nella tabella dr_telemetry di PostgreSQL e non dipendono dal logging del cloud.
 
 # Percorso del repository, per build immagini e overlay Kubernetes.
 REPO_ROOT="${REPO_ROOT:-/path/to/repository}"
@@ -70,7 +64,8 @@ REPO_ROOT="${REPO_ROOT:-/path/to/repository}"
 # Hostname applicativo: stesso valore del certificato ACM, del redirect URI
 # registrato in Entra e del record DNS. Deciso una volta, non modificabile a
 # costo zero dopo.
-APP_HOST="${APP_HOST:-}"                      # es. helios.tuodominio.example
+CANONICAL_APP_HOST="heliospoc.ggg.it"
+APP_HOST="${APP_HOST:-${CANONICAL_APP_HOST}}"
 
 # ACM_SELF_SIGNED=1 per host interni/placeholder (es. *.azienda.lan): la CA
 # pubblica di ACM non emette per domini non pubblici (il certificato va in
@@ -225,6 +220,7 @@ enable_public_endpoint() {
 # preflight — §1.3 / §1.4: regione opt-in e disponibilita' servizi
 # =============================================================================
 preflight() {
+  require_canonical_app_host
   need aws; need jq; need kubectl; need docker; need helm
 
   log "Identita' AWS corrente:"
@@ -268,6 +264,12 @@ preflight() {
   log "preflight completato."
 }
 
+require_canonical_app_host() {
+  if [ "${APP_HOST}" != "${CANONICAL_APP_HOST}" ]; then
+    die "APP_HOST deve essere ${CANONICAL_APP_HOST}: callback OIDC e cookie __Host-* non possono cambiare origin tra i siti."
+  fi
+}
+
 # _acm_self_signed — §3 (variante host interni): certificato self-signed per
 # APP_HOST importato in ACM. ACM accetta l'import di certificati self-signed
 # (sono issuer di se stessi, non serve catena). Limite PoC dichiarato: il
@@ -306,6 +308,7 @@ _acm_self_signed() {
 # s03_acm — §3: certificato ACM. Richiede un passo DNS manuale.
 # =============================================================================
 s03_acm() {
+  require_canonical_app_host
   require_vars APP_HOST
   [ "$ACM_SELF_SIGNED" = "1" ] && { _acm_self_signed; return; }
   # Riusa un certificato esistente SOLO se ISSUED o ancora in validazione. Un
@@ -603,26 +606,26 @@ _role_with_managed() { # role_name trust_json managed_arn...
   log "Ruolo $name pronto."
 }
 
+_detach_managed_policy_if_attached() { # role_name managed_policy_arn
+  local role_name="$1" policy_arn="$2" output
+  if output=$(aws iam detach-role-policy \
+      --role-name "$role_name" --policy-arn "$policy_arn" 2>&1); then
+    return 0
+  fi
+  if printf '%s' "$output" | grep -q 'NoSuchEntity'; then
+    return 0
+  fi
+  die "Impossibile rimuovere la policy IAM $policy_arn da $role_name: $output"
+}
+
 # =============================================================================
 # s06_eks — §6: cluster, access entry, OIDC provider, add-on, node group
 # =============================================================================
 s06_eks() {
   require_vars ACCOUNT_ID PRIV_PRIMARY_SUBNET PRIV_WITNESS_SUBNET
 
-  # Log group del control plane, solo se si e' scelto di tenerne acceso qualcuno.
-  if [ -n "$EKS_LOG_TYPES" ]; then
-    aws logs create-log-group --log-group-name "/aws/eks/${PREFIX}/cluster" 2>/dev/null || true
-    aws logs put-retention-policy --log-group-name "/aws/eks/${PREFIX}/cluster" \
-      --retention-in-days "$LOG_RETENTION_DAYS" 2>/dev/null || true
-  fi
-
   if ! aws eks describe-cluster --name "$PREFIX" >/dev/null 2>&1; then
-    local logging='{"clusterLogging":[{"types":["api","audit","authenticator"],"enabled":false}]}'
-    if [ -n "$EKS_LOG_TYPES" ]; then
-      local types_json
-      types_json=$(printf '%s' "$EKS_LOG_TYPES" | jq -R 'split(",")')
-      logging=$(jq -nc --argjson t "$types_json" '{clusterLogging:[{types:$t,enabled:true}]}')
-    fi
+    local logging='{"clusterLogging":[{"types":["api","audit","authenticator","controllerManager","scheduler"],"enabled":false}]}'
     aws eks create-cluster --name "$PREFIX" \
       --role-arn "arn:aws:iam::${ACCOUNT_ID}:role/${PREFIX}-eks-cluster" \
       --resources-vpc-config "subnetIds=${PRIV_PRIMARY_SUBNET},${PRIV_WITNESS_SUBNET},endpointPublicAccess=false,endpointPrivateAccess=true" \
@@ -631,6 +634,7 @@ s06_eks() {
     log "Creazione cluster in corso (~10 min)..."
     aws eks wait cluster-active --name "$PREFIX"
   fi
+  _disable_eks_control_plane_logs
   log "Cluster attivo."
 
   # §6.3 — access entry per il ruolo amministratore. Serve l'ARN del RUOLO,
@@ -658,6 +662,20 @@ s06_eks() {
   _eks_addons
   _node_group
   log "EKS pronto."
+}
+
+_disable_eks_control_plane_logs() {
+  local enabled_types
+  enabled_types=$(aws eks describe-cluster --name "$PREFIX" \
+    --query 'cluster.logging.clusterLogging[?enabled==`true`].types[]' \
+    --output text)
+  if [ -n "$enabled_types" ] && [ "$enabled_types" != "None" ]; then
+    log "Disabilito i log del control plane EKS ancora attivi: $enabled_types"
+    aws eks update-cluster-config --name "$PREFIX" \
+      --logging 'clusterLogging=[{types=[api,audit,authenticator,controllerManager,scheduler],enabled=false}]' \
+      >/dev/null
+    aws eks wait cluster-active --name "$PREFIX"
+  fi
 }
 
 _oidc_provider() {
@@ -902,9 +920,7 @@ s08_rds() {
       --enable-iam-database-authentication \
       --backup-retention-period 7 --no-enable-performance-insights \
       --no-deletion-protection >/dev/null
-      # Log exports RDS omessi di proposito: nessun log verso CloudWatch
-      # (scelta cost-conscious, coerente con EKS_LOG_TYPES). Per abilitarli
-      # aggiungere: --enable-cloudwatch-logs-exports postgresql upgrade
+      # Gli export dei log RDS sono omessi di proposito.
     log "Creazione RDS in corso (~8 min)..."
     aws rds wait db-instance-available --db-instance-identifier "${PREFIX}-postgres"
   fi
@@ -1243,17 +1259,17 @@ _build_push() {
 }
 
 _lambda() {
-  # §14.5 — ruolo, log group (se abilitato), function da digest, trigger SQS.
+  # §14.5 — ruolo senza permessi di logging, function da digest, trigger SQS.
   _role_with_managed "${PREFIX}-ticket-automation-lambda" \
-    '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}' \
+    '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
+  # Riconcilia anche un ruolo creato da una versione precedente dello script.
+  _detach_managed_policy_if_attached \
+    "${PREFIX}-ticket-automation-lambda" \
     arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
   _put_inline "${PREFIX}-ticket-automation-lambda" read-secrets "$(jq -nc \
     --arg db "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:${PREFIX}/application/database-*" \
     --arg cfg "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:${PREFIX}/application/config-*" \
     '{Version:"2012-10-17",Statement:[{Effect:"Allow",Action:["secretsmanager:GetSecretValue"],Resource:[$db,$cfg]}]}')"
-
-  [ -z "$EKS_LOG_TYPES" ] || aws logs create-log-group \
-    --log-group-name "/aws/lambda/${PREFIX}-ticket-automation" 2>/dev/null || true
 
   local digest
   digest=$(aws ecr describe-images --repository-name "${PREFIX}-ticket-processor" \
@@ -1330,6 +1346,7 @@ s15_platform() {
 # s16_overlay — §16: rendering placeholder e apply dell'overlay applicativo
 # =============================================================================
 s16_overlay() {
+  require_canonical_app_host
   require_vars ACCOUNT_ID REGISTRY IMAGE_TAG BACKUP_IMAGE_TAG BACKUP_BUCKET CERT_ARN APP_HOST
   require_vars ENTRA_API_CLIENT_ID ENTRA_BFF_CLIENT_ID ENTRA_ISSUER_URL \
     ENTRA_JWKS_URL ENTRA_AUTHORIZATION_ENDPOINT ENTRA_TOKEN_ENDPOINT ENTRA_END_SESSION_ENDPOINT ENTRA_API_SCOPE
@@ -1398,6 +1415,7 @@ s17_migrations() {
 # verify — §18: DNS finale e verifica end-to-end
 # =============================================================================
 verify() {
+  require_canonical_app_host
   require_vars APP_HOST BACKUP_BUCKET
   _ensure_kubeconfig
   log "Hostname ALB a cui puntare il record DNS di ${APP_HOST}:"
@@ -1450,7 +1468,7 @@ teardown() {
   warn "Risorse residue da rimuovere a mano (l'ordine e i dettagli sono nel §19"
   warn "del runbook): code SQS, bus/archive EventBridge, repository ECR, bucket S3,"
   warn "secret, Elastic IP (${NAT_EIP_ALLOC:-?}), istanza NAT, ruoli IAM, OIDC"
-  warn "provider, route table/subnet/IGW/VPC, log group CloudWatch, certificato ACM."
+  warn "provider, route table/subnet/IGW/VPC e certificato ACM."
   warn "Verifica finale:"
   warn "  aws resourcegroupstaggingapi get-resources --tag-filters Key=Name,Values='${PREFIX}*'"
 }

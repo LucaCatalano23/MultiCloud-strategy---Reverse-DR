@@ -1,10 +1,33 @@
 LAB_DOMAIN="azienda.lan"
-HELPDESK_FQDN="helpdesk.azienda.lan"
+HELPDESK_FQDN="heliospoc.ggg.it"
+# Zona host-specific split-horizon del lab: non rende BIND autorevole per tutta
+# ggg.it e permette di spostare lo stesso FQDN fra cloud e on-prem.
+HELPDESK_DNS_ZONE="heliospoc.ggg.it"
 
 CLOUD_NET="cloud-net"
 CLOUD_NET_CIDR="10.20.0.1/24"
 CLOUD_K3S_NAME="cloud-k3s"
 CLOUD_K3S_IP="10.20.0.10"
+# `lxc-k3s` e' il probe della demo. Sul cloud AWS reale ci sono due modalita':
+#   - `https`: CLOUD_TARGET_HOST = DNS name dell'ALB (con ACM), TLS verificato;
+#   - `http`:  CLOUD_TARGET_HOST = IP diretto dell'ALB quando NON hai un ACM.
+#     Nessuna verifica TLS, l'IP e' dinamico (va aggiornato a mano) e l'ALB deve
+#     esporre l'app su HTTP senza ssl-redirect. Vedi README.md.
+CLOUD_PROBE_MODE="lxc-k3s"
+CLOUD_TARGET_HOST=""
+# Vuoto = default per schema: 443 in modalita' https, 80 in modalita' http.
+CLOUD_TARGET_PORT=""
+# Solo in modalita' https con cert non attendibile (es. self-signed importato in
+# ACM): CLOUD_TARGET_CA_FILE fissa la CA da fidare, CLOUD_TARGET_INSECURE=true
+# salta la verifica. Mutuamente esclusivi. Non servono con un cert gia' fidato.
+CLOUD_TARGET_INSECURE="false"
+CLOUD_TARGET_CA_FILE=""
+CLOUD_HEALTHCHECK_PATH="/health/ready"
+CLOUD_CONNECT_TIMEOUT_SECONDS="5"
+CLOUD_HEALTHCHECK_TIMEOUT_SECONDS="10"
+# Safety interlock: configure and verify the intended probe target before
+# explicitly arming unattended promotion in config.env.
+DR_AUTO_FAILOVER_ENABLED="false"
 
 ONPREM_K3S_NAME="k3s-datacenter"
 ONPREM_K3S_IP="10.10.3.10"
@@ -34,8 +57,10 @@ HELPDESK_LAMBDA_FUNCTION_NAME="helpdesk-ticket-processor"
 DR_CONTROLLER_INTERVAL_SECONDS="20"
 DR_CONTROLLER_FAILURE_THRESHOLD="3"
 DR_CONTROLLER_SUCCESS_THRESHOLD="2"
+DR_CONTROLLER_RETRY_COOLDOWN_SECONDS="300"
 DR_CONTROLLER_MODE="watch"
 DR_STATE_DIR="/var/lib/helpdesk-dr"
+DR_RUNTIME_DIR="/run/helpdesk-dr"
 ONPREM_STANDBY_REPLICAS="1"
 DR_REQUIRE_ANSIBLE_NODE="true"
 

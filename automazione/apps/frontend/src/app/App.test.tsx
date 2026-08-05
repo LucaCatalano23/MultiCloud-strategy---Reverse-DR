@@ -106,7 +106,7 @@ function createGateway(overrides: Partial<HeliosGateway> = {}): HeliosGateway {
       result: { runtime: 'aws-lambda-cloud', classification: 'incident' },
       updatedAt: '2026-07-24T10:00:01+00:00',
     }),
-    logout: vi.fn().mockResolvedValue(undefined),
+    logout: vi.fn().mockResolvedValue(null),
     getLoginUrl: vi.fn().mockReturnValue('/api/v1/auth/login?returnTo=%2F'),
     ...overrides,
   }

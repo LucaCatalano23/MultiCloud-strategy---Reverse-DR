@@ -1,0 +1,37 @@
+[Unit]
+Description=Helios automatic cloud-to-on-prem DR controller
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/opt/helpdesk-dr/scripts/failover/dr-controller.sh
+ConditionPathExists=/etc/helpdesk-dr/config.env
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/helpdesk-dr
+Environment=HELPDESK_DR_CONFIG_FILE=/etc/helpdesk-dr/config.env
+Environment=ANSIBLE_LOCAL_TEMP=/run/helpdesk-dr/ansible-tmp
+Environment=ANSIBLE_REMOTE_TEMP=/run/helpdesk-dr/ansible-tmp
+ExecStart=/usr/local/bin/helpdesk-dr failover/dr-controller watch
+Restart=always
+RestartSec=10s
+TimeoutStopSec=30s
+RuntimeDirectory=helpdesk-dr
+RuntimeDirectoryMode=0750
+StateDirectory=helpdesk-dr
+StateDirectoryMode=0750
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

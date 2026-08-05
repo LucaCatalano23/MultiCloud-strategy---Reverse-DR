@@ -5,6 +5,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "${SCRIPT_DIR}/../common/lib.sh"
 
+failover_lock="$(runtime_dir)/failover.lock"
+exec 8>"${failover_lock}"
+if ! flock -n 8; then
+  echo "A failover operation is already in progress." >&2
+  exit 1
+fi
+
 wait_for_k3s "${ONPREM_K3S_NAME}" exec_onprem
 copy_to_container "${ONPREM_K3S_NAME}" "${ROOT_DIR}" "/tmp/helpdesk-dr"
 

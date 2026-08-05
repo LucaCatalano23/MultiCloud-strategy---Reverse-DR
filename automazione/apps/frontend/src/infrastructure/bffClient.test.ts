@@ -124,6 +124,22 @@ describe('BFF client', () => {
     expect(new Headers(request.headers).get('X-CSRF-Token')).toBe('csrf value')
   })
 
+  it('returns the provider end-session URL after the local logout', async () => {
+    document.cookie = '__Host-helios_csrf=csrf%20value; Secure; path=/'
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ redirectUrl: 'https://login.example.test/logout?client_id=bff' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+
+    const redirectUrl = await createBffClient(config, fetcher).logout()
+    const [, request] = fetcher.mock.calls[0] as [string, RequestInit]
+
+    expect(redirectUrl).toBe('https://login.example.test/logout?client_id=bff')
+    expect(new Headers(request.headers).get('X-CSRF-Token')).toBe('csrf value')
+  })
+
   it('surfaces the BFF error envelope message instead of only the status code', async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

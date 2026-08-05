@@ -20,7 +20,7 @@ della generazione corrente e' AWS EKS (`automazione/infra/aws`), quindi su
 Il suo indirizzo principale e `10.20.0.10`. In stato normale il DNS aziendale risolve:
 
 ```text
-helpdesk.azienda.lan -> 10.20.0.10
+heliospoc.ggg.it -> 10.20.0.10
 ```
 
 La comunicazione verso questo nodo avviene tramite HTTP, passando dall'Ingress Traefik. L'applicazione espone endpoint di controllo come:
@@ -61,7 +61,7 @@ Finche il flag e falso, `/health/ready` non risponde come pronto. Durante il fai
 Quando il DR e attivo, il DNS aziendale viene aggiornato cosi:
 
 ```text
-helpdesk.azienda.lan -> 10.10.3.10
+heliospoc.ggg.it -> 10.10.3.10
 ```
 
 Da quel momento le richieste HTTP degli utenti interni arrivano al cluster on-prem.
@@ -80,7 +80,7 @@ I record principali sono:
 
 ```text
 server-dns.azienda.lan      -> 10.10.2.53
-helpdesk.azienda.lan        -> cloud o on-prem, in base allo stato DR
+heliospoc.ggg.it            -> cloud o on-prem, in base allo stato DR
 git-server.azienda.lan      -> 10.10.3.70
 cloud-helpdesk.azienda.lan  -> 10.20.0.10
 onprem-helpdesk.azienda.lan -> 10.10.3.10
@@ -91,13 +91,13 @@ Il suo indirizzo e `10.10.2.53`.
 In normal mode il record applicativo punta al cloud:
 
 ```text
-helpdesk.azienda.lan -> 10.20.0.10
+heliospoc.ggg.it -> 10.20.0.10
 ```
 
 In DR mode punta al sito on-prem:
 
 ```text
-helpdesk.azienda.lan -> 10.10.3.10
+heliospoc.ggg.it -> 10.10.3.10
 ```
 
 Gli script di failover comunicano con questo nodo per aggiornare la zona DNS, validarla con `named-checkzone` e riavviare il servizio `named`.
@@ -180,7 +180,7 @@ Comunica con:
 
 - `cloud-k3s`, per interrogare il cluster primario e prelevare backup;
 - `k3s-datacenter`, per ripristinare il database e promuovere il sito DR;
-- `server-dns`, per aggiornare il record `helpdesk.azienda.lan`;
+- `server-dns`, per aggiornare la zona host-specific `heliospoc.ggg.it`;
 - `git-server`, per pubblicare o leggere il repository sorgente.
 
 ## `pc-dipendente1`
@@ -198,7 +198,7 @@ Non ospita servizi critici. Serve per simulare il punto di vista di un utente az
 Il modo corretto di usarlo e interrogare il servizio tramite nome DNS:
 
 ```bash
-curl http://helpdesk.azienda.lan/version
+curl https://heliospoc.ggg.it/api/v1/session
 ```
 
 In normal mode, se il DNS punta al cloud, il client raggiunge il servizio primario. In DR mode, se il DNS punta a on-prem, il client raggiunge il sito secondario.
@@ -333,13 +333,13 @@ limiti in [`infra/vault/README.md`](infra/vault/README.md).
 Il flusso principale in normal mode e:
 
 ```text
-client interno -> DNS aziendale -> helpdesk.azienda.lan -> sito primario AWS -> helios-web / helios-bff -> RDS PostgreSQL
+client interno -> DNS aziendale -> heliospoc.ggg.it -> sito primario AWS -> helios-web / helios-bff -> RDS PostgreSQL
 ```
 
 Il flusso principale in DR mode e:
 
 ```text
-client interno -> DNS aziendale -> helpdesk.azienda.lan -> k3s-datacenter -> helios-web / helios-bff -> postgres on-prem (database helios)
+client interno -> DNS aziendale -> heliospoc.ggg.it -> k3s-datacenter -> helios-web / helios-bff -> postgres on-prem (database helios)
 ```
 
 Il flusso operativo di backup e restore e (il tratto cloud-k3s -> mirror ansible-node era automatizzato via LocalStack S3 ed e' oggi manuale, vedi [`RUNBOOK_SCENARIO_REALE.md`](RUNBOOK_SCENARIO_REALE.md)):
@@ -360,7 +360,7 @@ Dopo il failover testato, lo stato corretto e:
 
 ```text
 .state/mode = dr
-helpdesk.azienda.lan = 10.10.3.10
+heliospoc.ggg.it = 10.10.3.10
 ```
 
 Questo significa che il servizio helpdesk viene risolto verso il sito on-prem e che la readiness del sito DR e attiva.

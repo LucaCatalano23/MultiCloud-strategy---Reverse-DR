@@ -39,6 +39,13 @@ spec:
     - host: REPLACE_APP_HOSTNAME
       http:
         paths:
+          - path: /health/ready
+            pathType: Exact
+            backend:
+              service:
+                name: helios-bff
+                port:
+                  number: 8000
           - path: /api
             pathType: Prefix
             backend:

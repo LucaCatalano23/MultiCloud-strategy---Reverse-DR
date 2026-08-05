@@ -103,4 +103,47 @@ if ($kubernetesFailures.Count -gt 0) {
   throw "Kubernetes static contract checks failed: $($kubernetesFailures -join ', ')"
 }
 
+# L'Ingress di default deve restare l'edge HTTPS con ACM: la variante solo-HTTP
+# e' un'alternativa opt-in per gli ambienti senza ACM, non deve indebolire il
+# default in silenzio.
+# Le regex mirano alle chiavi-annotazione complete, non ai token nudi, cosi' i
+# commenti che le nominano non falsano il controllo.
+$certAnnotation = 'alb\.ingress\.kubernetes\.io/certificate-arn'
+$sslRedirectAnnotation = 'alb\.ingress\.kubernetes\.io/ssl-redirect'
+
+$defaultIngress = Get-Content -LiteralPath (Join-Path $terraformRoot 'kubernetes/ingress.yaml') -Raw
+if ($defaultIngress -notmatch $certAnnotation) {
+  throw 'The default Ingress must keep the ACM certificate-arn (HTTPS edge).'
+}
+if ($defaultIngress -notmatch $sslRedirectAnnotation) {
+  throw 'The default Ingress must keep ssl-redirect so plain HTTP is upgraded to HTTPS.'
+}
+
+# Variante senza ACM: edge solo-HTTP per far rispondere 200 il listener :80 al
+# probe DR. Deve restare priva di TLS/ssl-redirect e conservare il routing
+# host-based verso /health/ready, altrimenti il probe non osserverebbe il primario.
+$httpOnlyIngress = Get-Content -LiteralPath (Join-Path $terraformRoot 'kubernetes/ingress-http-only.yaml') -Raw
+$httpOnlyFailures = @()
+if ($httpOnlyIngress -match $certAnnotation) {
+  $httpOnlyFailures += 'must not reference an ACM certificate'
+}
+if ($httpOnlyIngress -match $sslRedirectAnnotation) {
+  $httpOnlyFailures += 'must not force an HTTPS redirect (the :80 listener must answer 200)'
+}
+if ($httpOnlyIngress -match '"HTTPS"') {
+  $httpOnlyFailures += 'must not expose an HTTPS listener'
+}
+if ($httpOnlyIngress -notmatch '"HTTP":\s*80') {
+  $httpOnlyFailures += 'must expose an HTTP:80 listener'
+}
+if ($httpOnlyIngress -notmatch 'path:\s*/health/ready') {
+  $httpOnlyFailures += 'must route /health/ready for the DR readiness probe'
+}
+if ($httpOnlyIngress -notmatch 'host:\s*REPLACE_APP_HOSTNAME') {
+  $httpOnlyFailures += 'must keep host-based routing on the canonical hostname'
+}
+if ($httpOnlyFailures.Count -gt 0) {
+  throw "No-ACM HTTP-only Ingress variant checks failed: $($httpOnlyFailures -join '; ')"
+}
+
 Write-Output 'Terraform static contract checks passed.'

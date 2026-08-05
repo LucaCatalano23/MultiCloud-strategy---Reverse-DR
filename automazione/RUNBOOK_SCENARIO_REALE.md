@@ -174,7 +174,7 @@ un'eventuale connessione diretta per IP al nodo.
 openssl req -x509 -newkey rsa:4096 -sha256 -days 825 -nodes \
   -keyout ~/azienda-lan.key -out ~/azienda-lan.crt \
   -subj "/CN=azienda.lan" \
-  -addext "subjectAltName=DNS:helpdesk.azienda.lan,DNS:auth.azienda.lan,DNS:vault.azienda.lan,DNS:localhost,IP:127.0.0.1,IP:10.10.3.80"
+  -addext "subjectAltName=DNS:heliospoc.ggg.it,DNS:auth.azienda.lan,DNS:vault.azienda.lan,DNS:localhost,IP:127.0.0.1,IP:10.10.3.80"
 ```
 
 ## 5. Immagini applicative Helios
@@ -441,6 +441,40 @@ significa sempre che il token dell'operatore non porta i ruoli. Due controlli:
 
 ## 12. Coordinatore DR
 
+Prima del bootstrap configura il target reale in
+`automazione/helpdesk-dr/config.env`. Un ALB non ha un IP statico: usa il suo
+DNS name e arma il controller solo dopo aver verificato il valore:
+
+```bash
+alb_dns="$(kubectl -n helios-desk get ingress helios-public \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+test -n "$alb_dns"
+printf 'CLOUD_PROBE_MODE=https\nCLOUD_TARGET_HOST=%s\nDR_AUTO_FAILOVER_ENABLED=true\n' "$alb_dns"
+```
+
+I valori stampati vanno aggiunti al file, non usati per sostituirne il
+contenuto. Il bootstrap valida interlock, stato, timeout e target prima di
+avviare il servizio; una configurazione incompleta interrompe il bootstrap
+invece di essere interpretata come outage.
+
+Se non hai un ACM **validato pubblicamente**, la via preferita e' un self-signed
+importato in ACM: l'edge resta HTTPS (login `__Host-*` intatto) e il probe punta
+all'IP dell'ALB rilassando la verifica del cert non attendibile (vedi
+`helpdesk-dr/README.md`, "Senza ACM pubblico: self-signed HTTPS"):
+
+```bash
+alb_ip="<IP o DNS name dell'ALB>"
+printf 'CLOUD_PROBE_MODE=https\nCLOUD_TARGET_HOST=%s\nCLOUD_TARGET_INSECURE=true\nDR_AUTO_FAILOVER_ENABLED=true\n' "$alb_ip"
+```
+
+Solo se non puoi caricare **nessun** cert sull'ALB, come ultima spiaggia usa il
+probe HTTP puro (rompe il login utente, ALB su HTTP senza `ssl-redirect`):
+
+```bash
+alb_ip="<IP pubblico dell'ALB>"
+printf 'CLOUD_PROBE_MODE=http\nCLOUD_TARGET_HOST=%s\nCLOUD_TARGET_PORT=80\nDR_AUTO_FAILOVER_ENABLED=true\n' "$alb_ip"
+```
+
 ```bash
 cd automazione/helpdesk-dr
 bash scripts/poc/publish-git-truth.sh
@@ -453,11 +487,24 @@ cd ../..
 lambda-dr sia pronto. A questo punto il sito DR è **completo in standby**: tutto
 installato, workload applicativi a zero fino alla promozione.
 
+Il bootstrap installa inoltre `helpdesk-dr-controller.service` su
+`ansible-node`, lo abilita al boot e lo avvia immediatamente. Verifica:
+
+```bash
+lxc exec ansible-node -- systemctl status helpdesk-dr-controller.service --no-pager
+lxc exec ansible-node -- journalctl -u helpdesk-dr-controller.service -n 50 --no-pager
+```
+
+In modalita' `https` il probe connette direttamente all'ALB mantenendo
+`heliospoc.ggg.it` come Host e TLS SNI, e gli IP *risolti* dall'ALB non vanno
+mai salvati. In modalita' `http` (senza ACM) l'IP dell'ALB e' invece impostato
+di proposito in `CLOUD_TARGET_HOST` e va aggiornato quando cambia.
+
 ---
 
 ## Verifica: vedere l'applicazione
 
-In modalità normale il DNS punta `helpdesk.azienda.lan` al sito primario (AWS,
+In modalità normale il DNS punta `heliospoc.ggg.it` al sito primario (AWS,
 fuori dal lab): in laboratorio non c'è quindi un'app da interrogare a riposo. Il
 modo per **vedere Helios in funzione nel lab è promuoverlo** con il drill: la
 promozione scala i workload da zero, sposta il DNS e rende il sito DR attivo.
@@ -515,10 +562,10 @@ L'endpoint `/dr-status` del monolite non esiste più: il sito attivo si legge da
 
 ### Aprire la dashboard nel browser dell'host
 
-L'host Windows non è nel lab e non usa `server-dns`, quindi `helpdesk.azienda.lan`
+L'host Windows non è nel lab e non usa `server-dns`, quindi `heliospoc.ggg.it`
 non risolve e gli IP `10.10.3.x` (dentro WSL2+LXD) non sono raggiungibili dal
 browser. La dashboard usa cookie `__Host-*` e callback OIDC legati a
-`https://helpdesk.azienda.lan`, quindi non si può usare `localhost` o un IP nudo:
+`https://heliospoc.ggg.it`, quindi non si può usare `localhost` o un IP nudo:
 serve proprio quell'hostname sulla porta 443. Si instrada verso l'ingress Traefik
 con un port-forward.
 
@@ -556,7 +603,7 @@ altrimenti l'ingress risponde 503.
    letto al passo 1. Per generare la riga esatta da incollare, da WSL:
 
    ```bash
-   echo "$(hostname -I | awk '{print $1}') helpdesk.azienda.lan auth.azienda.lan"
+   echo "$(hostname -I | awk '{print $1}') heliospoc.ggg.it auth.azienda.lan"
    ```
 
    Puoi aggiornarlo in modo idempotente da un **PowerShell come amministratore**
@@ -566,11 +613,11 @@ altrimenti l'ingress risponde 503.
    ```powershell
    $wslIp = (wsl -e bash -lc "hostname -I | awk '{print `$1}'").Trim()
    $hosts = "$env:windir\System32\drivers\etc\hosts"
-   $keep  = Get-Content $hosts | Where-Object { $_ -notmatch 'helpdesk\.azienda\.lan|auth\.azienda\.lan' }
-   ($keep + "$wslIp helpdesk.azienda.lan auth.azienda.lan") | Set-Content $hosts -Encoding ascii
+   $keep  = Get-Content $hosts | Where-Object { $_ -notmatch 'heliospoc\.ggg\.it|auth\.azienda\.lan' }
+   ($keep + "$wslIp heliospoc.ggg.it auth.azienda.lan") | Set-Content $hosts -Encoding ascii
    ```
 
-4. Browser Windows → `https://helpdesk.azienda.lan` → accetta il certificato
+4. Browser Windows → `https://heliospoc.ggg.it` → accetta il certificato
    self-signed → login Keycloak (stesso port-forward, Traefik smista per Host) con
    l'operatore DR. La porta **deve** restare 443: il `redirect_uri` OIDC è senza
    porta, quindi un 8443 romperebbe il login.
@@ -579,7 +626,7 @@ Se il browser non raggiunge l'IP di WSL, verifica che il port-forward sia su
 `--address 0.0.0.0` (non `127.0.0.1`) e che l'IP nel file hosts sia quello **attuale**
 di eth0 (passo 1). In alternativa, per una verifica rapida senza browser, da
 `pc-dipendente1` (che usa il DNS del lab):
-`curl -sk https://helpdesk.azienda.lan/api/v1/session`.
+`curl -sk https://heliospoc.ggg.it/api/v1/session`.
 
 ### Senza permessi di amministratore su Windows
 
@@ -590,9 +637,9 @@ che **non** richiedono privilegi:
   l'admin di Windows) e WSL raggiunge il lab **direttamente** su `10.10.3.10`:
   niente port-forward, niente hosts di Windows.
   ```bash
-  echo "10.10.3.10 helpdesk.azienda.lan auth.azienda.lan" | sudo tee -a /etc/hosts
+  echo "10.10.3.10 heliospoc.ggg.it auth.azienda.lan" | sudo tee -a /etc/hosts
   sudo apt update && sudo apt install -y firefox-esr
-  firefox https://helpdesk.azienda.lan >/dev/null 2>&1 &
+  firefox https://heliospoc.ggg.it >/dev/null 2>&1 &
   ```
 
 - **Chrome/Edge di Windows con `--host-resolver-rules`** (flag per-utente, nessuna
@@ -600,7 +647,7 @@ che **non** richiedono privilegi:
   passo 1; sostituisci `IP_WSL`. Il `--user-data-dir` temporaneo evita che i flag
   vengano ignorati se il browser è già aperto e non tocca il profilo aziendale:
   ```text
-  chrome.exe --user-data-dir="%TEMP%\helios" --host-resolver-rules="MAP helpdesk.azienda.lan IP_WSL, MAP auth.azienda.lan IP_WSL" https://helpdesk.azienda.lan
+  chrome.exe --user-data-dir="%TEMP%\helios" --host-resolver-rules="MAP heliospoc.ggg.it IP_WSL, MAP auth.azienda.lan IP_WSL" https://heliospoc.ggg.it
   ```
 
 ---

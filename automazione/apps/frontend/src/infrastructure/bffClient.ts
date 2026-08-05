@@ -324,7 +324,12 @@ export function createBffClient(
         }
         return parseAutomationRun(value.data)
       }, { method: 'POST' }),
-    logout: () => request('/auth/logout', () => undefined, { method: 'POST' }),
+    logout: () => request('/auth/logout', (value) => {
+      if (!isRecord(value) || typeof value.redirectUrl !== 'string') {
+        throw new Error('Risposta logout BFF non valida')
+      }
+      return value.redirectUrl
+    }, { method: 'POST' }),
     getLoginUrl: (returnTo) => {
       if (!returnTo.startsWith('/') || returnTo.startsWith('//') || returnTo.includes('\\')) {
         throw new Error('returnTo deve essere un percorso locale')

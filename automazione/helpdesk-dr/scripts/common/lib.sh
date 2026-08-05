@@ -166,16 +166,37 @@ EOF
 }
 
 state_dir() {
-  mkdir -p "${ROOT_DIR}/.state"
-  printf '%s\n' "${ROOT_DIR}/.state"
+  local dir="${DR_STATE_DIR:-${ROOT_DIR}/.state}"
+  mkdir -p "${dir}"
+  printf '%s\n' "${dir}"
+}
+
+runtime_dir() {
+  local dir="${DR_RUNTIME_DIR:-/run/helpdesk-dr}"
+  mkdir -p "${dir}"
+  printf '%s\n' "${dir}"
 }
 
 write_dr_state() {
   local state="$1"
   local dir
+  local mode_tmp
+  local updated_tmp
   dir="$(state_dir)"
-  printf '%s\n' "${state}" >"${dir}/mode"
-  date -u +"%Y-%m-%dT%H:%M:%SZ" >"${dir}/updated_at"
+  case "${state}" in
+    primary | promoting | dr | reconcile) ;;
+    *)
+      echo "Invalid DR state: ${state}" >&2
+      return 1
+      ;;
+  esac
+  mode_tmp="${dir}/.mode.$$"
+  updated_tmp="${dir}/.updated_at.$$"
+  printf '%s\n' "${state}" >"${mode_tmp}"
+  date -u +"%Y-%m-%dT%H:%M:%SZ" >"${updated_tmp}"
+  chmod 0600 "${mode_tmp}" "${updated_tmp}"
+  mv -f "${mode_tmp}" "${dir}/mode"
+  mv -f "${updated_tmp}" "${dir}/updated_at"
 }
 
 read_dr_state() {
@@ -184,8 +205,34 @@ read_dr_state() {
   if [ -f "${dir}/mode" ]; then
     cat "${dir}/mode"
   else
-    printf 'primary\n'
+    printf 'unknown\n'
   fi
+}
+
+wait_for_deployment_stopped() {
+  local exec_fn="$1"
+  local namespace="$2"
+  local deployment="$3"
+  local state=''
+  local spec_replicas
+  local replicas
+  local ready_replicas
+  local available_replicas
+
+  for _ in $(seq 1 120); do
+    state="$("${exec_fn}" kubectl -n "${namespace}" get \
+      "deployment/${deployment}" \
+      -o jsonpath='{.spec.replicas},{.status.replicas},{.status.readyReplicas},{.status.availableReplicas}')"
+    IFS=',' read -r spec_replicas replicas ready_replicas available_replicas <<<"${state}"
+    if [ "${spec_replicas:-0}" = "0" ] && [ "${replicas:-0}" = "0" ] &&
+      [ "${ready_replicas:-0}" = "0" ] && [ "${available_replicas:-0}" = "0" ]; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "Deployment ${namespace}/${deployment} did not fully stop; replicas=${state}." >&2
+  return 1
 }
 
 wait_for_k3s() {
@@ -252,8 +299,7 @@ copy_to_container() {
   tar -C "${src}" -cf - . | lxc exec "${container}" -- tar -C "${dst}" -xf -
 }
 
-render_dns_zone() {
-  local target_ip="$1"
+render_lab_dns_zone() {
   local serial
   serial="$(date +%s)"
   cat <<EOF
@@ -263,7 +309,6 @@ render_dns_zone() {
 )
 @ IN NS server-dns.${LAB_DOMAIN}.
 server-dns IN A ${DNS_SERVER_IP}
-helpdesk IN A ${target_ip}
 auth IN A ${ONPREM_K3S_IP}
 git-server IN A ${GIT_SERVER_IP}
 cloud-helpdesk IN A ${CLOUD_K3S_IP}
@@ -271,28 +316,207 @@ onprem-helpdesk IN A ${ONPREM_K3S_IP}
 EOF
 }
 
+render_helpdesk_dns_zone() {
+  local target_ip="$1"
+  local serial
+  serial="$(date +%s)"
+  cat <<EOF
+\$TTL 30
+@ IN SOA server-dns.${LAB_DOMAIN}. admin.${LAB_DOMAIN}. (
+  ${serial} 30 15 604800 30
+)
+@ IN NS server-dns.${LAB_DOMAIN}.
+@ IN A ${target_ip}
+EOF
+}
+
 set_helpdesk_dns() {
   local target_ip="$1"
-  render_dns_zone "${target_ip}" >"${ROOT_DIR}/.helpdesk.zone"
+  local dr_runtime_dir
+  local lab_zone_file
+  local app_zone_file
+  dr_runtime_dir="$(runtime_dir)"
+  lab_zone_file="${dr_runtime_dir}/lab.zone.$$"
+  app_zone_file="${dr_runtime_dir}/helpdesk.zone.$$"
+  render_lab_dns_zone >"${lab_zone_file}"
+  render_helpdesk_dns_zone "${target_ip}" >"${app_zone_file}"
   exec_dns bash -lc "grep -q 'zone \"${LAB_DOMAIN}\"' /etc/bind/named.conf.local || cat >>/etc/bind/named.conf.local <<'EOF'
 zone \"${LAB_DOMAIN}\" {
   type master;
   file \"/etc/bind/db.${LAB_DOMAIN}\";
 };
 EOF"
-  lxc_retry file push "${ROOT_DIR}/.helpdesk.zone" "${DNS_SERVER_NAME}/etc/bind/db.${LAB_DOMAIN}"
+  exec_dns bash -lc "grep -q 'zone \"${HELPDESK_DNS_ZONE}\"' /etc/bind/named.conf.local || cat >>/etc/bind/named.conf.local <<'EOF'
+zone \"${HELPDESK_DNS_ZONE}\" {
+  type master;
+  file \"/etc/bind/db.${HELPDESK_DNS_ZONE}\";
+};
+EOF"
+  lxc_retry file push "${lab_zone_file}" "${DNS_SERVER_NAME}/etc/bind/db.${LAB_DOMAIN}"
+  lxc_retry file push "${app_zone_file}" "${DNS_SERVER_NAME}/etc/bind/db.${HELPDESK_DNS_ZONE}"
   exec_dns named-checkconf
   exec_dns named-checkzone "${LAB_DOMAIN}" "/etc/bind/db.${LAB_DOMAIN}"
+  exec_dns named-checkzone "${HELPDESK_DNS_ZONE}" "/etc/bind/db.${HELPDESK_DNS_ZONE}"
   exec_dns systemctl restart named
-  rm -f "${ROOT_DIR}/.helpdesk.zone"
+  rm -f "${lab_zone_file}" "${app_zone_file}"
 }
 
-# Con il monolite rimosso, sul sito cloud simulato non gira piu' un'applicazione
-# da interrogare via HTTP: la sonda diventa la raggiungibilita' del data plane
-# Kubernetes, che e' esattamente il failure domain che il drill spegne
-# (`lxc stop cloud-k3s`) e cio' che dr-controller deve saper rilevare.
-cloud_ready() {
+cloud_ready_lxc() {
   probe_cloud kubectl get --raw /readyz >/dev/null
+}
+
+validate_cloud_probe_config() {
+  local mode="${CLOUD_PROBE_MODE:-lxc-k3s}"
+  local safe_path_pattern='^/[A-Za-z0-9._~/%?=&-]*$'
+  local connect_timeout="${CLOUD_CONNECT_TIMEOUT_SECONDS:-5}"
+  local healthcheck_timeout="${CLOUD_HEALTHCHECK_TIMEOUT_SECONDS:-10}"
+
+  if ! [[ "${connect_timeout}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "CLOUD_CONNECT_TIMEOUT_SECONDS must be a positive integer." >&2
+    return 1
+  fi
+  if ! [[ "${healthcheck_timeout}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "CLOUD_HEALTHCHECK_TIMEOUT_SECONDS must be a positive integer." >&2
+    return 1
+  fi
+  if [ "${connect_timeout}" -gt "${healthcheck_timeout}" ]; then
+    echo "CLOUD_CONNECT_TIMEOUT_SECONDS must not exceed CLOUD_HEALTHCHECK_TIMEOUT_SECONDS." >&2
+    return 1
+  fi
+
+  case "${mode}" in
+    lxc-k3s)
+      return 0
+      ;;
+    https | http)
+      # `http` esiste per gli ALB senza ACM: stesso probe, ma in chiaro e con
+      # porta di default 80 invece di 443. CLOUD_TARGET_HOST accetta un IP oltre
+      # all'hostname perche' senza DNS l'unico riferimento e' l'IP dell'ALB.
+      local target_default_port=443
+      if [ "${mode}" = "http" ]; then
+        target_default_port=80
+      fi
+      if ! [[ "${CLOUD_TARGET_HOST:-}" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]]; then
+        echo "CLOUD_TARGET_HOST must be an IP address or DNS hostname when CLOUD_PROBE_MODE=${mode}." >&2
+        return 1
+      fi
+      if ! [[ "${CLOUD_TARGET_PORT:-${target_default_port}}" =~ ^[0-9]+$ ]] ||
+        [ "${CLOUD_TARGET_PORT:-${target_default_port}}" -lt 1 ] ||
+        [ "${CLOUD_TARGET_PORT:-${target_default_port}}" -gt 65535 ]; then
+        echo "CLOUD_TARGET_PORT must be between 1 and 65535." >&2
+        return 1
+      fi
+      if ! [[ "${CLOUD_HEALTHCHECK_PATH:-/health/ready}" =~ ${safe_path_pattern} ]]; then
+        echo "CLOUD_HEALTHCHECK_PATH must be a safe absolute HTTP path." >&2
+        return 1
+      fi
+      # I knob TLS valgono solo in https: un cert non attendibile (self-signed
+      # importato in ACM) si gestisce fissando la CA (CLOUD_TARGET_CA_FILE) o,
+      # in alternativa esclusiva, saltando la verifica (CLOUD_TARGET_INSECURE).
+      if [ "${mode}" = "https" ]; then
+        case "${CLOUD_TARGET_INSECURE:-false}" in
+          true | false) ;;
+          *)
+            echo "CLOUD_TARGET_INSECURE must be true or false." >&2
+            return 1
+            ;;
+        esac
+        if [ -n "${CLOUD_TARGET_CA_FILE:-}" ] && [ "${CLOUD_TARGET_INSECURE:-false}" = "true" ]; then
+          echo "CLOUD_TARGET_CA_FILE and CLOUD_TARGET_INSECURE are mutually exclusive." >&2
+          return 1
+        fi
+        if [ -n "${CLOUD_TARGET_CA_FILE:-}" ] && [ ! -r "${CLOUD_TARGET_CA_FILE}" ]; then
+          echo "CLOUD_TARGET_CA_FILE must point to a readable CA certificate." >&2
+          return 1
+        fi
+      fi
+      ;;
+    *)
+      echo "CLOUD_PROBE_MODE must be lxc-k3s, https or http." >&2
+      return 1
+      ;;
+  esac
+}
+
+# Connette direttamente all'IP o al DNS name dell'ALB, ma mantiene
+# heliospoc.ggg.it come URL, Host e TLS SNI. In questo modo il probe continua a
+# osservare il primary anche dopo che il DNS applicativo e' passato al DR. Con un
+# cert non attendibile (es. self-signed importato in ACM) la verifica si rilassa
+# via CLOUD_TARGET_CA_FILE (CA pinnata) o CLOUD_TARGET_INSECURE=true.
+cloud_ready_https() {
+  local response_file
+  local status
+  local tls_args=()
+  validate_cloud_probe_config
+  if [ -n "${CLOUD_TARGET_CA_FILE:-}" ]; then
+    tls_args+=(--cacert "${CLOUD_TARGET_CA_FILE}")
+  elif [ "${CLOUD_TARGET_INSECURE:-false}" = "true" ]; then
+    tls_args+=(--insecure)
+  fi
+  response_file="$(mktemp "$(runtime_dir)/cloud-ready.XXXXXX")"
+  if ! status="$(curl --fail --silent --show-error \
+    "${tls_args[@]}" \
+    --connect-timeout "${CLOUD_CONNECT_TIMEOUT_SECONDS:-5}" \
+    --max-time "${CLOUD_HEALTHCHECK_TIMEOUT_SECONDS:-10}" \
+    --connect-to \
+    "${HELPDESK_FQDN}:443:${CLOUD_TARGET_HOST}:${CLOUD_TARGET_PORT:-443}" \
+    --output "${response_file}" \
+    --write-out '%{http_code}' \
+    "https://${HELPDESK_FQDN}${CLOUD_HEALTHCHECK_PATH:-/health/ready}")"; then
+    rm -f "${response_file}"
+    return 1
+  fi
+  if [ "${status}" != "200" ] ||
+    ! grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"' "${response_file}" ||
+    ! grep -Eq '"service"[[:space:]]*:[[:space:]]*"helios-bff"' "${response_file}"; then
+    rm -f "${response_file}"
+    return 1
+  fi
+  rm -f "${response_file}"
+}
+
+# Variante senza TLS per ALB privi di ACM. Connette direttamente all'IP (o
+# hostname) dell'ALB via HTTP in chiaro, ma tiene heliospoc.ggg.it come Host per
+# far combaciare la regola host-based dell'Ingress e osservare sempre il primary
+# anche quando il DNS applicativo e' gia' passato al DR. Limiti (nessuna verifica
+# TLS; l'IP dell'ALB e' dinamico e va aggiornato a mano; l'ALB deve servire HTTP
+# senza ssl-redirect, altrimenti :80 risponde 301 e il probe fallisce) sono
+# dichiarati in README.md.
+cloud_ready_http() {
+  local response_file
+  local status
+  validate_cloud_probe_config
+  response_file="$(mktemp "$(runtime_dir)/cloud-ready.XXXXXX")"
+  if ! status="$(curl --fail --silent --show-error \
+    --connect-timeout "${CLOUD_CONNECT_TIMEOUT_SECONDS:-5}" \
+    --max-time "${CLOUD_HEALTHCHECK_TIMEOUT_SECONDS:-10}" \
+    --connect-to \
+    "${HELPDESK_FQDN}:80:${CLOUD_TARGET_HOST}:${CLOUD_TARGET_PORT:-80}" \
+    --output "${response_file}" \
+    --write-out '%{http_code}' \
+    "http://${HELPDESK_FQDN}${CLOUD_HEALTHCHECK_PATH:-/health/ready}")"; then
+    rm -f "${response_file}"
+    return 1
+  fi
+  if [ "${status}" != "200" ] ||
+    ! grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"' "${response_file}" ||
+    ! grep -Eq '"service"[[:space:]]*:[[:space:]]*"helios-bff"' "${response_file}"; then
+    rm -f "${response_file}"
+    return 1
+  fi
+  rm -f "${response_file}"
+}
+
+cloud_ready() {
+  case "${CLOUD_PROBE_MODE:-lxc-k3s}" in
+    lxc-k3s) cloud_ready_lxc ;;
+    https) cloud_ready_https ;;
+    http) cloud_ready_http ;;
+    *)
+      echo "Unsupported CLOUD_PROBE_MODE: ${CLOUD_PROBE_MODE}" >&2
+      return 1
+      ;;
+  esac
 }
 
 onprem_ready() {

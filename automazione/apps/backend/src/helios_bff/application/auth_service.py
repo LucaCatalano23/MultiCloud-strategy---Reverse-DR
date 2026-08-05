@@ -3,9 +3,9 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Callable
 
 from helios_bff.application.pkce import code_challenge, normalize_return_to
 from helios_bff.application.ports import AuthStore, OidcBrowserClient, SecretProtector
@@ -47,6 +47,7 @@ class BrowserAuthService:
         id_token_authenticator: TokenAuthenticator,
         protector: SecretProtector,
         *,
+        expected_issuer: str,
         clock: Callable[[], datetime] | None = None,
         random_token: Callable[[], str] | None = None,
         session_ttl: timedelta = timedelta(hours=8),
@@ -56,6 +57,7 @@ class BrowserAuthService:
         self._oidc = oidc
         self._id_token_authenticator = id_token_authenticator
         self._protector = protector
+        self._expected_issuer = expected_issuer
         self._clock = clock or (lambda: datetime.now(UTC))
         self._random_token = random_token or (lambda: secrets.token_urlsafe(48))
         self._session_ttl = session_ttl
@@ -100,6 +102,8 @@ class BrowserAuthService:
                 tokens.id_token,
                 expected_nonce=transaction.nonce,
             )
+            if not hmac.compare_digest(principal.issuer, self._expected_issuer):
+                raise OAuthFlowError("OIDC issuer changed during login")
         except Exception as exc:
             raise OAuthFlowError("OIDC callback could not be completed") from exc
         session_id = self._random_token()
@@ -123,35 +127,45 @@ class BrowserAuthService:
     async def get_principal(self, session_cookie: str | None) -> Principal | None:
         if not session_cookie:
             return None
-        session = await self._store.get_session(_digest(session_cookie))
+        session = await self._get_active_session(session_cookie)
         if session is None:
-            return None
-        if session.expires_at <= self._clock():
-            await self._store.delete_session(session.session_id_hash)
             return None
         return session.principal
 
     async def get_access_token(self, session_cookie: str) -> str:
-        session = await self._store.get_session(_digest(session_cookie))
-        if session is None or session.expires_at <= self._clock():
+        session = await self._get_active_session(session_cookie)
+        if session is None:
             raise SessionError("session is missing or expired")
         try:
             return self._protector.decrypt(session.encrypted_access_token)
         except Exception as exc:
             raise SessionError("session token cannot be decrypted") from exc
 
-    async def logout(
-        self, session_cookie: str, *, csrf_cookie: str, csrf_header: str
-    ) -> None:
+    async def logout(self, session_cookie: str, *, csrf_cookie: str, csrf_header: str) -> str:
         if not csrf_cookie or not csrf_header or not hmac.compare_digest(csrf_cookie, csrf_header):
             raise CsrfError("CSRF validation failed")
         session = await self._store.get_session(_digest(session_cookie))
         if session is None or not hmac.compare_digest(session.csrf_hash, _digest(csrf_header)):
             raise CsrfError("CSRF validation failed")
         await self._store.delete_session(session.session_id_hash)
+        return self._oidc.end_session_url()
 
     async def ping(self) -> bool:
         return await self._store.ping()
+
+    async def _get_active_session(self, session_cookie: str) -> BrowserSession | None:
+        session = await self._store.get_session(_digest(session_cookie))
+        if session is None:
+            return None
+        is_expired = session.expires_at <= self._clock()
+        is_previous_provider = not hmac.compare_digest(
+            session.principal.issuer,
+            self._expected_issuer,
+        )
+        if is_expired or is_previous_provider:
+            await self._store.delete_session(session.session_id_hash)
+            return None
+        return session
 
 
 def _digest(value: str) -> str:

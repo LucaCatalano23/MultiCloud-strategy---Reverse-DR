@@ -4,16 +4,23 @@ metadata:
   name: helpdesk
   namespace: helios-desk
 spec:
-  dnsZone: azienda.lan
+  dnsZone: heliospoc.ggg.it
   strategy:
     type: failover
     primaryGeoTag: cloud
   ingress:
     ingressClassName: traefik
     rules:
-      - host: helpdesk.azienda.lan
+      - host: heliospoc.ggg.it
         http:
           paths:
+            - path: /api
+              pathType: Prefix
+              backend:
+                service:
+                  name: helios-bff
+                  port:
+                    number: 8000
             - path: /
               pathType: Prefix
               backend:

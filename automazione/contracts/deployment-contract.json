@@ -3,7 +3,9 @@
   "application": {
     "name": "helios-desk",
     "publicApiBasePath": "/api/v1",
-    "canonicalLabHost": "helpdesk.azienda.lan"
+    "canonicalHost": "heliospoc.ggg.it",
+    "canonicalOrigin": "https://heliospoc.ggg.it",
+    "dnsOwnership": "external-authoritative-provider-with-lxclab-split-horizon"
   },
   "kubernetes": {
     "applicationNamespace": "helios-desk",
@@ -104,6 +106,13 @@
   },
   "identity": {
     "note": "Le application registration Entra sono create e gestite dal team identita' aziendale, fuori da questo repository: non esiste piu' uno stack Terraform che le produca. L'audience e' quindi un input esterno, non un output derivabile.",
+    "browserFlow": {
+      "flow": "authorization-code-pkce-s256",
+      "callbackUri": "https://heliospoc.ggg.it/api/v1/auth/callback",
+      "postLogoutRedirectUri": "https://heliospoc.ggg.it/",
+      "tokenStorage": "bff-server-side-only",
+      "providerSwitchPolicy": "reject-session-when-issuer-changes"
+    },
     "audience": {
       "source": "external-entra-app-registration",
       "application": "demo-api-app",

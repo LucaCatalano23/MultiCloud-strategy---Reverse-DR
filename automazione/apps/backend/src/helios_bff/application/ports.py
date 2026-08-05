@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Mapping, Protocol, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any, Protocol
 
 from helios_bff.domain.auth import BrowserSession, OAuthTransaction, TokenSet
 from helios_bff.domain.telemetry import DrTelemetryRecord
@@ -30,6 +31,8 @@ class OidcBrowserClient(Protocol):
     def authorization_url(self, *, state: str, nonce: str, code_challenge: str) -> str: ...
 
     async def exchange_code(self, *, code: str, code_verifier: str) -> TokenSet: ...
+
+    def end_session_url(self) -> str: ...
 
 
 class TicketClient(Protocol):

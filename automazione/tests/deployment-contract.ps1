@@ -10,8 +10,66 @@ if ($contract.schemaVersion -ne 1) {
 if ($contract.application.publicApiBasePath -ne '/api/v1') {
     throw 'The public API base path must stay /api/v1.'
 }
+$canonicalHost = 'heliospoc.ggg.it'
+$canonicalOrigin = "https://$canonicalHost"
+if ($contract.application.canonicalHost -ne $canonicalHost) {
+    throw "The application must use the canonical host $canonicalHost on every site."
+}
+if ($contract.application.canonicalOrigin -ne $canonicalOrigin) {
+    throw "The application canonical origin must be $canonicalOrigin."
+}
+if ($contract.identity.browserFlow.callbackUri -ne "$canonicalOrigin/api/v1/auth/callback") {
+    throw 'The browser OIDC callback must remain bound to the canonical origin.'
+}
+if ($contract.identity.browserFlow.providerSwitchPolicy -ne 'reject-session-when-issuer-changes') {
+    throw 'Sessions from the previous identity provider must be rejected after failover.'
+}
 if ($contract.sites.dr.promotionOrchestrator -ne 'ansible') {
     throw 'Ansible must remain the on-prem promotion orchestrator.'
+}
+
+# Cookie __Host-*, callback OIDC e CSRF richiedono un origin stabile durante il
+# failover. Tutti i target devono quindi convergere sul dominio del contratto;
+# l'issuer cambia per sito, l'origin applicativo no.
+$canonicalFiles = @(
+    'infra/onprem/application/ingress.yaml',
+    'infra/onprem/kustomization.yaml',
+    'infra/onprem/keycloak/realm/helios-desk-realm.json',
+    'helpdesk-dr/config.defaults',
+    'helpdesk-dr/manifests/kubernetes/k8gb/gslb-helpdesk.yaml'
+)
+foreach ($canonicalFile in $canonicalFiles) {
+    $canonicalPath = Join-Path $automazioneRoot $canonicalFile
+    if ((Get-Content -LiteralPath $canonicalPath -Raw) -notmatch [regex]::Escape($canonicalHost)) {
+        throw "$canonicalFile does not reference the canonical application host $canonicalHost."
+    }
+}
+
+$onPremConfig = Get-Content -LiteralPath (
+    Join-Path $automazioneRoot 'infra/onprem/kustomization.yaml') -Raw
+if ($onPremConfig -notmatch [regex]::Escape("$canonicalOrigin/api/v1/auth/callback")) {
+    throw 'The Keycloak BFF callback must remain on the canonical application origin.'
+}
+if ($onPremConfig -notmatch [regex]::Escape('IDENTITY_PROVIDER=keycloak')) {
+    throw 'The on-prem site must authenticate through Keycloak.'
+}
+
+$cloudConfig = Get-Content -LiteralPath (
+    Join-Path $automazioneRoot 'infra/aws/kubernetes/configmap.yaml') -Raw
+if ($cloudConfig -notmatch [regex]::Escape('IDENTITY_PROVIDER: entra-id')) {
+    throw 'The cloud site must authenticate through Microsoft Entra ID.'
+}
+if ($cloudConfig -notmatch [regex]::Escape('OIDC_CLIENT_AUTH_METHOD: private_key_jwt')) {
+    throw 'The Entra BFF client must keep certificate-based private_key_jwt authentication.'
+}
+
+$provisionCli = Get-Content -LiteralPath (
+    Join-Path $automazioneRoot 'infra/aws/provision-cli/provision.sh') -Raw
+if ($provisionCli -notmatch [regex]::Escape('CANONICAL_APP_HOST="heliospoc.ggg.it"')) {
+    throw 'The AWS provision CLI must pin the cloud deployment to the canonical host.'
+}
+if ($provisionCli -notmatch [regex]::Escape('require_canonical_app_host')) {
+    throw 'The AWS provision CLI must fail closed when APP_HOST differs from the contract.'
 }
 
 $expectedWorkloads = @(

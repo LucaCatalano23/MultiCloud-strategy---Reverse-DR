@@ -1,0 +1,86 @@
+# Variante edge SOLO-HTTP dell'Ingress `helios-public`, per ambienti in cui non
+# e' disponibile un certificato ACM (nemmeno self-signed importato).
+#
+# Opt-in: NON e' elencata in kustomization.yaml e non viene applicata dal deploy
+# di default. Per usarla, sostituisci `- ingress.yaml` con
+# `- ingress-http-only.yaml` in kustomization.yaml (oppure applicala al posto di
+# ingress.yaml). Serve solo REPLACE_APP_HOSTNAME: nessun ARN ACM.
+#
+# Differenze rispetto a ingress.yaml (con ACM):
+#   - un solo listener HTTP:80 (niente HTTPS:443);
+#   - nessun `certificate-arn` e nessun `ssl-redirect`, cosi' il listener :80
+#     risponde 200 invece di reindirizzare (301) verso HTTPS.
+# Il routing resta host-based su REPLACE_APP_HOSTNAME: il probe DR in modalita'
+# `http` (helpdesk-dr, CLOUD_PROBE_MODE=http) connette all'IP dell'ALB tenendo
+# `Host: heliospoc.ggg.it`, e la regola qui sotto lo instrada verso helios-bff.
+#
+# LIMITE DICHIARATO — non e' un edge di produzione per il traffico utente:
+# i cookie `__Host-*`, il CSRF double-submit e la callback OIDC di Entra
+# richiedono `https://heliospoc.ggg.it` same-origin (vedi README, "Endpoint
+# canonico"). Su HTTP in chiaro il browser rifiuta i cookie `__Host-*` e il login
+# si rompe. Questa variante serve al probe di readiness / health e agli ambienti
+# non-produzione; per gli utenti reali la TLS va comunque terminata da qualche
+# parte (ACM sull'ALB o TLS a un altro livello).
+#
+# IngressClassParams/IngressClass sono identici a ingress.yaml: se li cambi la',
+# aggiornali anche qui.
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: IngressClassParams
+metadata:
+  name: helios-public-alb
+spec:
+  scheme: internet-facing
+  ipAddressType: ipv4
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: helios-desk
+---
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: helios-public-alb
+spec:
+  controller: ingress.k8s.aws/alb
+  parameters:
+    apiGroup: elbv2.k8s.aws
+    kind: IngressClassParams
+    name: helios-public-alb
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: helios-public
+  namespace: helios-desk
+  annotations:
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    alb.ingress.kubernetes.io/ip-address-type: ipv4
+    alb.ingress.kubernetes.io/load-balancer-attributes: routing.http.drop_invalid_header_fields.enabled=true,idle_timeout.timeout_seconds=60
+    alb.ingress.kubernetes.io/tags: Project=reverse-dr,Environment=poc,ManagedBy=aws-load-balancer-controller
+spec:
+  ingressClassName: helios-public-alb
+  rules:
+    - host: REPLACE_APP_HOSTNAME
+      http:
+        paths:
+          - path: /health/ready
+            pathType: Exact
+            backend:
+              service:
+                name: helios-bff
+                port:
+                  number: 8000
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: helios-bff
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: helios-web
+                port:
+                  number: 8080

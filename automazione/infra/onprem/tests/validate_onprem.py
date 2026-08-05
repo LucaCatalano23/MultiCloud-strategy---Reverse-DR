@@ -101,11 +101,30 @@ class OnPremManifestContractTest(unittest.TestCase):
 
     def test_identity_and_application_ingress_are_separated(self) -> None:
         self.assertIn("host: auth.azienda.lan", self.rendered)
-        self.assertIn("host: helpdesk.azienda.lan", self.rendered)
+        self.assertIn("host: heliospoc.ggg.it", self.rendered)
         self.assertIn("name: helios-bff", self.rendered)
         self.assertIn("name: helios-web", self.rendered)
         self.assertIn("path: /api", self.rendered)
         self.assertIn("path: /", self.rendered)
+
+    def test_keycloak_redirects_back_to_the_canonical_application_origin(self) -> None:
+        bff = self._deployment_document("helios-bff")
+        self.assertIn(
+            "OIDC_REDIRECT_URI: https://heliospoc.ggg.it/api/v1/auth/callback",
+            self.rendered,
+        )
+        self.assertIn(
+            "OIDC_POST_LOGOUT_REDIRECT_URI: https://heliospoc.ggg.it/",
+            self.rendered,
+        )
+        self.assertIn(
+            "APPLICATION_PUBLIC_ORIGIN: https://heliospoc.ggg.it",
+            self.rendered,
+        )
+        self.assertIn("APPLICATION_PUBLIC_ORIGIN", bff)
+        self.assertIn("OIDC_CLIENT_AUTH_METHOD: client_secret", self.rendered)
+        self.assertIn("name: OIDC_CLIENT_AUTH_METHOD", bff)
+        self.assertIn("name: IDENTITY_PROVIDER", bff)
 
     def test_bff_uses_keycloak_without_exposing_tokens_to_react(self) -> None:
         self.assertIn("OIDC_ISSUER_URL", self.rendered)
@@ -188,6 +207,22 @@ class RealmContractTest(unittest.TestCase):
         self.assertFalse(bff["directAccessGrantsEnabled"])
         self.assertFalse(bff["fullScopeAllowed"])
         self.assertEqual(["S256"], bff["attributes"]["pkce.code.challenge.method"].split())
+
+    def test_bff_client_accepts_only_the_canonical_application_origin(self) -> None:
+        bff = next(
+            client
+            for client in self.realm["clients"]
+            if client["clientId"] == "helios-bff"
+        )
+        self.assertEqual(
+            ["https://heliospoc.ggg.it/api/v1/auth/callback"],
+            bff["redirectUris"],
+        )
+        self.assertEqual(["https://heliospoc.ggg.it"], bff["webOrigins"])
+        self.assertEqual(
+            "https://heliospoc.ggg.it/",
+            bff["attributes"]["post.logout.redirect.uris"],
+        )
 
     def test_roles_claim_and_audience_match_the_entra_contract(self) -> None:
         self.assertEqual(

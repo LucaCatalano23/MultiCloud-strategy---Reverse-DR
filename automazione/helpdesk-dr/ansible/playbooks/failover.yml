@@ -39,11 +39,11 @@
       register: dr_state
       changed_when: false
 
-    - name: Refuse a duplicate failover
+    - name: Require the atomic promoting state set by the failover wrapper
       ansible.builtin.assert:
         that:
-          - dr_state.stdout | trim != "dr"
-        fail_msg: "DR mode is already active; no second restore will be attempted."
+          - dr_state.stdout | trim == "promoting"
+        fail_msg: "Failover must hold the shared lock and enter promoting state first."
 
     # L'RTO pubblicato in dashboard e' misurato, non dichiarato: il cronometro
     # parte qui e si ferma dopo lo switch DNS. Copre restore + preflight +
@@ -151,19 +151,13 @@
           when: helios_failover_telemetry.rc != 0
 
       rescue:
-        - name: Keep the on-prem application non-ready after a failed preflight
-          ansible.builtin.command:
-            argv:
-              - bash
-              - scripts/failover/demote-onprem.sh
-            chdir: "{{ project_root }}"
-          environment:
-            HELIOS_DR_NAMESPACE: "{{ helios_dr_namespace }}"
-            HELIOS_DR_WORKLOADS: "{{ helios_dr_workloads | join(' ') }}"
-            HELIOS_DR_STANDBY_REPLICAS: "{{ helios_dr_standby_replicas | string }}"
-          changed_when: true
-          failed_when: false
-
-        - name: Stop because the DR candidate is not safe to promote
+        # A command can be interrupted after changing workloads or DNS but
+        # before returning success. Without a durable phase marker, automatic
+        # demotion would be an unsafe guess; the wrapper records `reconcile`
+        # and blocks every retry until an operator verifies both sites.
+        - name: Stop and require reconciliation of the ambiguous transition
           ansible.builtin.fail:
-            msg: "Restore, identity preflight, or workload promotion failed; DNS was not switched."
+            msg: >-
+              Restore, identity preflight, or workload promotion failed.
+              The wrapper will enter reconcile state; inspect DNS and both
+              sites before any retry or cutback.

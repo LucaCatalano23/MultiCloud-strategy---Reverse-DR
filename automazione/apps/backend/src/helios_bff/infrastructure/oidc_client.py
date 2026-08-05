@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Callable
 from urllib.parse import urlencode
 
 import httpx
@@ -25,6 +25,9 @@ class OidcBrowserConfig:
     client_id: str
     credential: OidcClientCredential
     redirect_uri: str
+    end_session_endpoint: str
+    post_logout_redirect_uri: str
+    include_client_id_in_end_session: bool
     scopes: tuple[str, ...]
 
     def __post_init__(self) -> None:
@@ -33,6 +36,8 @@ class OidcBrowserConfig:
             self.token_endpoint,
             self.client_id,
             self.redirect_uri,
+            self.end_session_endpoint,
+            self.post_logout_redirect_uri,
         )
         if not all(required) or self.credential is None or not self.scopes:
             raise ValueError("OIDC browser configuration is incomplete")
@@ -66,6 +71,15 @@ class HttpOidcBrowserClient:
             }
         )
         return f"{self._config.authorization_endpoint}?{query}"
+
+    def end_session_url(self) -> str:
+        parameters = {
+            "post_logout_redirect_uri": self._config.post_logout_redirect_uri,
+        }
+        if self._config.include_client_id_in_end_session:
+            parameters["client_id"] = self._config.client_id
+        query = urlencode(parameters)
+        return f"{self._config.end_session_endpoint}?{query}"
 
     async def exchange_code(self, *, code: str, code_verifier: str) -> TokenSet:
         try:

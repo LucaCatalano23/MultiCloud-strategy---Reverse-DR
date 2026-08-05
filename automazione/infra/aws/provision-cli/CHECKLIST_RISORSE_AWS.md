@@ -250,18 +250,6 @@ Documentazione AWS: [creazione cluster](https://docs.aws.amazon.com/eks/latest/u
 [add-on](https://docs.aws.amazon.com/eks/latest/userguide/creating-an-add-on.html),
 [managed node group](https://docs.aws.amazon.com/eks/latest/userguide/create-managed-node-group.html).
 
-### [ ] Log group del control plane
-
-**Nome:** `/aws/eks/reverse-dr-poc/cluster`  
-**Console:** CloudWatch → Log groups
-
-- [ ] presente se `EKS_LOG_TYPES` non è vuota;
-- [ ] retention `30 giorni`, salvo override di `LOG_RETENTION_DAYS`;
-- [ ] i log predefiniti dello script abilitano `authenticator`.
-
-Creazione manuale: CloudWatch → Log groups → **Create log group**; inserire il
-nome esatto, quindi Actions → **Edit retention setting** → 30 days.
-
 ### [ ] Cluster EKS
 
 **Nome:** `reverse-dr-poc`  
@@ -277,7 +265,8 @@ Controllare:
 - [ ] VPC della PoC e entrambe le subnet private;
 - [ ] endpoint privato abilitato;
 - [ ] endpoint pubblico disabilitato, salvo apertura temporanea `/32` esplicita;
-- [ ] control plane logging coerente con `EKS_LOG_TYPES`.
+- [ ] tutti i log del control plane disabilitati: `api`, `audit`,
+  `authenticator`, `controllerManager` e `scheduler`.
 
 Creazione manuale: EKS → **Add cluster → Create** → Custom configuration;
 disabilitare Auto Mode, scegliere ruolo, VPC e le due subnet private. Nella
@@ -693,23 +682,14 @@ Documentazione AWS: [funzione da container image](https://docs.aws.amazon.com/la
 **Nome:** `reverse-dr-poc-ticket-automation-lambda`
 
 - [ ] trust `lambda.amazonaws.com`;
-- [ ] policy gestita `AWSLambdaBasicExecutionRole`;
+- [ ] nessuna policy `AWSLambdaBasicExecutionRole` e nessun permesso
+  `logs:CreateLogGroup`, `logs:CreateLogStream` o `logs:PutLogEvents`;
 - [ ] inline policy `read-secrets` con `secretsmanager:GetSecretValue` limitato ai
   due secret applicativi.
 
-Creazione manuale: IAM → Roles → Create role → AWS service → Lambda; allegare la
-managed policy e aggiungere l'inline policy con gli ARN completi dei secret.
-
-### [ ] Log group Lambda
-
-**Nome:** `/aws/lambda/reverse-dr-poc-ticket-automation`
-
-- [ ] esiste se `EKS_LOG_TYPES` non è vuota o dopo la prima invocazione;
-- [ ] non contiene errori `AccessDenied` o manifest image unsupported.
-
-Creazione manuale: CloudWatch → Log groups → Create log group. Lo script corrente
-non imposta la retention per questo gruppo; per coerenza cost-conscious impostare
-manualmente 30 giorni.
+Creazione manuale: IAM → Roles → Create role → AWS service → Lambda; non allegare
+la policy proposta per il logging. Aggiungere soltanto l'inline policy
+`read-secrets` con gli ARN completi dei due secret applicativi.
 
 ### [ ] Function e trigger
 
@@ -870,6 +850,8 @@ adottarla tramite lookup e riconciliare i campi gestiti. Conservare in
 Non segnare come errore l'assenza di:
 
 - [ ] NAT Gateway;
+- [ ] log group `/aws/eks/reverse-dr-poc/cluster`;
+- [ ] log group `/aws/lambda/reverse-dr-poc-ticket-automation`;
 - [ ] Route 53 hosted zone o record DNS finale;
 - [ ] WAF, Shield Advanced o Redis/ElastiCache;
 - [ ] ALB creato direttamente dallo script prima dell'Ingress;
@@ -877,3 +859,9 @@ Non segnare come errore l'assenza di:
 
 Il DNS finale appartiene al sistema DNS esterno indicato da `APP_HOST`. L'ALB
 compare soltanto quando AWS Load Balancer Controller riconcilia l'Ingress.
+
+Se i due log group esistono perché creati da una versione precedente, verificare
+prima se i dati storici servono e poi eliminarli da CloudWatch → Log groups →
+Actions → **Delete log group**. La cancellazione è definitiva; lo script non la
+esegue automaticamente. Le metriche di servizio mostrate automaticamente da AWS
+possono restare visibili, ma non sono configurate dal provisioning.

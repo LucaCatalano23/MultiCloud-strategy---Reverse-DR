@@ -43,7 +43,11 @@ class FailingCredential:
         raise OidcClientCredentialError("certificato illeggibile")
 
 
-def _build_client(credential: object) -> tuple[HttpOidcBrowserClient, list[httpx.Request]]:
+def _build_client(
+    credential: object,
+    *,
+    include_client_id_in_end_session: bool = True,
+) -> tuple[HttpOidcBrowserClient, list[httpx.Request]]:
     captured: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -65,12 +69,39 @@ def _build_client(credential: object) -> tuple[HttpOidcBrowserClient, list[httpx
             client_id="bff-client",
             credential=credential,  # type: ignore[arg-type]
             redirect_uri="https://helios.example.com/api/v1/auth/callback",
+            end_session_endpoint="https://idp.example.com/logout",
+            post_logout_redirect_uri="https://helios.example.com/",
+            include_client_id_in_end_session=include_client_id_in_end_session,
             scopes=("openid", "profile"),
         ),
         httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         clock=lambda: NOW,
     )
     return client, captured
+
+
+@pytest.mark.unit
+def test_end_session_url_is_bound_to_the_registered_client_and_redirect() -> None:
+    client, _ = _build_client(StubAssertionCredential())
+
+    logout_url = client.end_session_url()
+
+    assert logout_url.startswith("https://idp.example.com/logout?")
+    assert "client_id=bff-client" in logout_url
+    assert "post_logout_redirect_uri=https%3A%2F%2Fhelios.example.com%2F" in logout_url
+
+
+@pytest.mark.unit
+def test_entra_end_session_url_omits_the_keycloak_specific_client_id() -> None:
+    client, _ = _build_client(
+        StubAssertionCredential(),
+        include_client_id_in_end_session=False,
+    )
+
+    logout_url = client.end_session_url()
+
+    assert "client_id=" not in logout_url
+    assert "post_logout_redirect_uri=https%3A%2F%2Fhelios.example.com%2F" in logout_url
 
 
 @pytest.mark.unit

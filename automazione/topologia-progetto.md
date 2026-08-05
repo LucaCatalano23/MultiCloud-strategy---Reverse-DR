@@ -41,7 +41,7 @@ flowchart LR
     git["git-server\n10.10.3.70\nbare repo helpdesk-dr.git"]
     vault["vault-openbao\n10.10.3.80\nOpenBao, segreti del sito DR"]
     ansible["ansible-node\n10.10.3.100\nAnsible + DR controller"]
-    onpreming["Traefik Ingress\nhelpdesk.azienda.lan\n10.10.3.10"]
+    onpreming["Traefik Ingress\nheliospoc.ggg.it\n10.10.3.10"]
     onpremapp["Workload Helios\nweb / bff / ticket / automation\nreplicas 0 a riposo"]
     onprempg["Pod postgres\nDB helios restored da backup"]
     onpremk3s --> onpreming
@@ -96,7 +96,7 @@ flowchart LR
 | `router-datacenter` | OpenWrt router | `eth0 10.10.3.1`, `eth1 10.10.2.3` | routing datacenter verso DMZ/edge |
 | `router-dmz` | OpenWrt router | `eth0 10.10.2.4`, `eth1 10.10.4.1` | router centrale DMZ, default route verso edge |
 | `router-edge` | OpenWrt edge router | `eth0 10.10.4.2`, `eth1 DHCP lxdbr0` | NAT outbound verso Internet, nessun inbound intenzionale |
-| `server-dns` | Ubuntu | `eth0 10.10.2.53` | Bind9, zona `azienda.lan`, record `helpdesk.azienda.lan` |
+| `server-dns` | Ubuntu | `eth0 10.10.2.53` | Bind9, zona lab `azienda.lan` e zona host-specific `heliospoc.ggg.it` |
 | `pc-dipendente1` | Ubuntu client | `eth0 10.10.1.193` | client interno |
 | `k3s-datacenter` | Ubuntu + k3s | `eth0 10.10.3.10` | cluster Kubernetes on-prem DR |
 | `proxy-keycloak` | Ubuntu | `eth0 10.10.3.50` | nodo previsto per proxy/autenticazione |
@@ -115,7 +115,7 @@ flowchart TB
   end
 
   subgraph onprem["Cluster k3s-datacenter 10.10.3.10"]
-    oing["Ingress Traefik\nhost helpdesk.azienda.lan"]
+    oing["Ingress Traefik\nhost heliospoc.ggg.it"]
     oweb["Deployment helios-web :8080\nreplicas 0 a riposo"]
     obff["Deployment helios-bff :8000\nSITE_MODE=dr in DR"]
     osvcs["helios-ticket-service :8001\nhelios-automation-service :8002\nClusterIP"]
@@ -127,7 +127,7 @@ flowchart TB
     osvcs --> opgsvc --> opg
   end
 
-  dns["server-dns 10.10.2.53\nhelpdesk.azienda.lan"]
+  dns["server-dns 10.10.2.53\nheliospoc.ggg.it"]
   dns -. "normal mode -> 10.20.0.10" .-> cdp
   dns -. "DR mode -> 10.10.3.10" .-> oing
 ```
@@ -149,7 +149,7 @@ sequenceDiagram
   participant App as helios-web / helios-bff
   participant DB as RDS PostgreSQL
 
-  Client->>DNS: resolve helpdesk.azienda.lan
+  Client->>DNS: resolve heliospoc.ggg.it
   DNS-->>Client: A del sito primario in normal mode
   Client->>DMZ: HTTPS verso helpdesk
   DMZ->>Edge: uscita verso il cloud
@@ -186,8 +186,8 @@ sequenceDiagram
   OnPrem->>OnPrem: scala app, restore Postgres
   Controller->>OnPrem: promote-onprem.sh
   OnPrem->>OnPrem: imposta DR_ACTIVE=true
-  Controller->>DNS: helpdesk.azienda.lan -> 10.10.3.10
-  Client->>DNS: resolve helpdesk.azienda.lan
+  Controller->>DNS: heliospoc.ggg.it -> 10.10.3.10
+  Client->>DNS: resolve heliospoc.ggg.it
   DNS-->>Client: A 10.10.3.10
   Client->>OnPrem: traffico verso sito DR
 ```
@@ -196,7 +196,7 @@ sequenceDiagram
 
 | Record | Valore in normal mode | Valore in DR mode | Note |
 |---|---:|---:|---|
-| `helpdesk.azienda.lan` | `10.20.0.10` | `10.10.3.10` | record aggiornato dagli script DR |
+| `heliospoc.ggg.it` | `10.20.0.10` | `10.10.3.10` | zona host-specific split-horizon aggiornata dagli script DR |
 | `server-dns.azienda.lan` | `10.10.2.53` | `10.10.2.53` | DNS aziendale |
 | `git-server.azienda.lan` | `10.10.3.70` | `10.10.3.70` | source of truth applicativo |
 | `cloud-helpdesk.azienda.lan` | `10.20.0.10` | `10.20.0.10` | riferimento esplicito al primario |

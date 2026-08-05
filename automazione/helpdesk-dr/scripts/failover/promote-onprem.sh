@@ -84,6 +84,5 @@ done
 
 onprem_ready
 set_helpdesk_dns "${ONPREM_K3S_IP}"
-write_dr_state "dr"
 
 echo "On-prem promoted. ${HELPDESK_FQDN} -> ${ONPREM_K3S_IP}"

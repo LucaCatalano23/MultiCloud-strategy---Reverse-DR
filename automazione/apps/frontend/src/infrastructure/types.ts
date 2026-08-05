@@ -15,6 +15,6 @@ export interface HeliosGateway {
   updateTicket(id: string, input: UpdateTicketInput): Promise<Ticket>
   deleteTicket(id: string): Promise<void>
   runTicketAutomation(id: string): Promise<AutomationRun>
-  logout(): Promise<void>
+  logout(): Promise<string | null>
   getLoginUrl(returnTo: string): string
 }

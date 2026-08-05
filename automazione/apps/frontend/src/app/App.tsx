@@ -112,7 +112,11 @@ export function App({ gateway, runtimeConfig }: AppProps) {
           onQueryChange={(query) => setFilters({ ...filters, query })}
           onOpenMobileNav={() => setMobileNavOpen(true)}
           onLogout={async () => {
-            await gateway.logout()
+            const endSessionUrl = await gateway.logout()
+            if (endSessionUrl) {
+              window.location.assign(endSessionUrl)
+              return
+            }
             await reload()
           }}
         />

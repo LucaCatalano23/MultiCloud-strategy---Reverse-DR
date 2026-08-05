@@ -12,7 +12,17 @@ def test_pkce_uses_rfc7636_s256_vector() -> None:
 @pytest.mark.unit
 @pytest.mark.parametrize(
     ("value", "expected"),
-    [("/tickets", "/tickets"), ("https://evil.test", "/"), ("//evil.test", "/"), ("", "/")],
+    [
+        ("/tickets", "/tickets"),
+        ("/tickets?status=open", "/tickets?status=open"),
+        ("https://evil.test", "/"),
+        ("//evil.test", "/"),
+        (r"/\evil.test", "/"),
+        ("/%2f%2fevil.test", "/"),
+        ("/%5cevil.test", "/"),
+        ("/tickets\r\nLocation: https://evil.test", "/"),
+        ("", "/"),
+    ],
 )
 def test_return_to_is_restricted_to_local_absolute_paths(value: str, expected: str) -> None:
     assert normalize_return_to(value) == expected

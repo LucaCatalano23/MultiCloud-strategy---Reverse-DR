@@ -326,6 +326,7 @@ export function createDemoGateway(): HeliosGateway {
     },
     logout: async () => {
       session = { ...session, authenticated: false, user: null }
+      return null
     },
     getLoginUrl: (returnTo) => `/api/v1/auth/login?returnTo=${encodeURIComponent(returnTo)}`,
   }

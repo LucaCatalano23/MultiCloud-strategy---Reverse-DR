@@ -1,12 +1,17 @@
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-
-from helios_bff.application.auth_service import BrowserAuthService, CsrfError, OAuthFlowError
-from helios_bff.domain.auth import BrowserSession, OAuthTransaction, TokenSet
 from tests.fakes import FakeAuthenticator, principal
 
+from helios_bff.application.auth_service import (
+    BrowserAuthService,
+    CsrfError,
+    OAuthFlowError,
+    SessionError,
+)
+from helios_bff.domain.auth import BrowserSession, OAuthTransaction, TokenSet
 
 NOW = datetime(2026, 7, 22, 10, 0, tzinfo=UTC)
 
@@ -66,6 +71,9 @@ class FakeOidcBrowserClient:
             expires_at=NOW + timedelta(hours=1),
         )
 
+    def end_session_url(self) -> str:
+        return "https://identity.example.test/logout?post_logout_redirect_uri=canonical"
+
 
 def random_values() -> Any:
     values = iter(["state-value", "nonce-value", "v" * 64, "session-value", "csrf-value"])
@@ -82,6 +90,7 @@ async def test_oauth_pkce_flow_stores_only_opaque_session_identifier_in_browser(
         oidc,
         verifier,
         PrefixProtector(),
+        expected_issuer="https://identity.example.test/tenant/v2.0",
         clock=lambda: NOW,
         random_token=random_values(),
     )
@@ -97,7 +106,9 @@ async def test_oauth_pkce_flow_stores_only_opaque_session_identifier_in_browser(
     assert oidc.exchange_request == ("authorization-code", "v" * 64)
     assert completed.session_cookie == "session-value"
     assert "access-token" not in completed.session_cookie
-    assert await service.get_access_token(completed.session_cookie) == "access-token-server-side-only"
+    assert (
+        await service.get_access_token(completed.session_cookie) == "access-token-server-side-only"
+    )
     stored = next(iter(store.sessions.values()))
     assert stored.encrypted_access_token != "access-token-server-side-only"
     assert completed.return_to == "/tickets"
@@ -110,6 +121,7 @@ async def test_oauth_callback_rejects_state_not_bound_to_browser() -> None:
         FakeOidcBrowserClient(),
         FakeAuthenticator(principal()),
         PrefixProtector(),
+        expected_issuer="https://identity.example.test/tenant/v2.0",
         clock=lambda: NOW,
         random_token=random_values(),
     )
@@ -124,6 +136,30 @@ async def test_oauth_callback_rejects_state_not_bound_to_browser() -> None:
 
 
 @pytest.mark.unit
+async def test_oauth_callback_rejects_principal_from_an_unexpected_issuer() -> None:
+    store = MemoryAuthStore()
+    service = BrowserAuthService(
+        store,
+        FakeOidcBrowserClient(),
+        FakeAuthenticator(principal()),
+        PrefixProtector(),
+        expected_issuer="https://auth.azienda.lan/realms/helios-desk",
+        clock=lambda: NOW,
+        random_token=random_values(),
+    )
+    login = await service.start_login("/")
+
+    with pytest.raises(OAuthFlowError):
+        await service.complete_login(
+            code="authorization-code",
+            state="state-value",
+            state_cookie=login.state_cookie,
+        )
+
+    assert store.sessions == {}
+
+
+@pytest.mark.unit
 async def test_logout_requires_double_submit_csrf_and_deletes_session() -> None:
     store = MemoryAuthStore()
     service = BrowserAuthService(
@@ -131,6 +167,7 @@ async def test_logout_requires_double_submit_csrf_and_deletes_session() -> None:
         FakeOidcBrowserClient(),
         FakeAuthenticator(principal()),
         PrefixProtector(),
+        expected_issuer="https://identity.example.test/tenant/v2.0",
         clock=lambda: NOW,
         random_token=random_values(),
     )
@@ -146,9 +183,60 @@ async def test_logout_requires_double_submit_csrf_and_deletes_session() -> None:
             csrf_header="wrong",
         )
 
-    await service.logout(
+    logout_url = await service.logout(
         completed.session_cookie,
         csrf_cookie=completed.csrf_token,
         csrf_header=completed.csrf_token,
     )
     assert not store.sessions
+    assert logout_url.startswith("https://identity.example.test/logout?")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("previous_issuer", "active_issuer"),
+    [
+        (
+            "https://identity.example.test/tenant/v2.0",
+            "https://auth.azienda.lan/realms/helios-desk",
+        ),
+        (
+            "https://auth.azienda.lan/realms/helios-desk",
+            "https://identity.example.test/tenant/v2.0",
+        ),
+    ],
+)
+async def test_session_from_previous_identity_provider_is_rejected_and_deleted(
+    previous_issuer: str,
+    active_issuer: str,
+) -> None:
+    store = MemoryAuthStore()
+    previous_principal = replace(principal(), issuer=previous_issuer)
+    previous_site = BrowserAuthService(
+        store,
+        FakeOidcBrowserClient(),
+        FakeAuthenticator(previous_principal),
+        PrefixProtector(),
+        expected_issuer=previous_issuer,
+        clock=lambda: NOW,
+        random_token=random_values(),
+    )
+    login = await previous_site.start_login("/")
+    completed = await previous_site.complete_login(
+        code="authorization-code",
+        state="state-value",
+        state_cookie=login.state_cookie,
+    )
+    active_site = BrowserAuthService(
+        store,
+        FakeOidcBrowserClient(),
+        FakeAuthenticator(principal()),
+        PrefixProtector(),
+        expected_issuer=active_issuer,
+        clock=lambda: NOW,
+    )
+
+    assert await active_site.get_principal(completed.session_cookie) is None
+    assert store.sessions == {}
+    with pytest.raises(SessionError):
+        await active_site.get_access_token(completed.session_cookie)

@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
-from hmac import compare_digest
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Callable, Literal, Protocol
+from hmac import compare_digest
+from typing import Any, Literal, Protocol
 
 from fastapi import FastAPI, Header, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from helios_bff.application.auth_service import (
-    BrowserAuthService,
     CsrfError,
     OAuthFlowError,
     SessionError,
@@ -22,7 +22,6 @@ from helios_bff.infrastructure.service_clients import UpstreamServiceError, Upst
 from helios_shared.events import EventEnvelope
 from helios_shared.http import ApiProblem, install_error_handlers
 from helios_ticket_service.domain.models import TicketPriority, TicketStatus
-
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +52,7 @@ class BrowserAuth(Protocol):
 
     async def get_access_token(self, session_cookie: str) -> str: ...
 
-    async def logout(
-        self, session_cookie: str, *, csrf_cookie: str, csrf_header: str
-    ) -> None: ...
+    async def logout(self, session_cookie: str, *, csrf_cookie: str, csrf_header: str) -> str: ...
 
     async def ping(self) -> bool: ...
 
@@ -211,23 +208,26 @@ def create_app(
         response.delete_cookie(STATE_COOKIE, path="/", secure=True, httponly=True, samesite="lax")
         return response
 
-    @app.post("/api/v1/auth/logout", status_code=204, response_class=Response, response_model=None)
+    @app.post("/api/v1/auth/logout", response_model=None)
     async def logout(
         request: Request,
         response: Response,
         csrf_header: str | None = Header(default=None, alias="X-CSRF-Token"),
-    ) -> None:
+    ) -> dict[str, str]:
         session_cookie = request.cookies.get(SESSION_COOKIE)
         csrf_cookie = request.cookies.get(CSRF_COOKIE)
         if not session_cookie or not csrf_cookie or not csrf_header:
             raise ApiProblem(403, "csrf_validation_failed", "CSRF validation failed")
-        await auth.logout(
+        redirect_url = await auth.logout(
             session_cookie,
             csrf_cookie=csrf_cookie,
             csrf_header=csrf_header,
         )
         response.delete_cookie(SESSION_COOKIE, path="/", secure=True, httponly=True, samesite="lax")
-        response.delete_cookie(CSRF_COOKIE, path="/", secure=True, httponly=False, samesite="strict")
+        response.delete_cookie(
+            CSRF_COOKIE, path="/", secure=True, httponly=False, samesite="strict"
+        )
+        return {"redirectUrl": redirect_url}
 
     @app.get("/api/v1/tickets")
     async def list_tickets(request: Request) -> dict[str, Any]:
@@ -235,9 +235,7 @@ def create_app(
         return await tickets.list_tickets(access_token)
 
     @app.post("/api/v1/tickets", status_code=201)
-    async def create_ticket(
-        request: Request, payload: CreateTicketProxyRequest
-    ) -> dict[str, Any]:
+    async def create_ticket(request: Request, payload: CreateTicketProxyRequest) -> dict[str, Any]:
         access_token = await _session_access_token(auth, request)
         return await tickets.create_ticket(access_token, payload.model_dump(mode="json"))
 
@@ -251,9 +249,7 @@ def create_app(
         request: Request, ticket_id: str, payload: UpdateTicketProxyRequest
     ) -> dict[str, Any]:
         access_token = await _session_access_token(auth, request)
-        return await tickets.update_ticket(
-            access_token, ticket_id, payload.model_dump(mode="json")
-        )
+        return await tickets.update_ticket(access_token, ticket_id, payload.model_dump(mode="json"))
 
     @app.delete("/api/v1/tickets/{ticket_id}", status_code=204, response_class=Response)
     async def delete_ticket(request: Request, ticket_id: str) -> Response:

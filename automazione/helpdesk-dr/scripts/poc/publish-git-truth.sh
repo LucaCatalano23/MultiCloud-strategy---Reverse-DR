@@ -20,6 +20,7 @@ trap 'rm -rf "${workdir}"' EXIT
 cp -R "${ROOT_DIR}/ansible" "${workdir}/ansible"
 cp -R "${ROOT_DIR}/manifests" "${workdir}/manifests"
 cp -R "${ROOT_DIR}/scripts" "${workdir}/scripts"
+cp -R "${ROOT_DIR}/systemd" "${workdir}/systemd"
 if [ -d "${ROOT_DIR}/../infra/onprem" ]; then
   mkdir -p "${workdir}/infra"
   cp -R "${ROOT_DIR}/../infra/onprem" "${workdir}/infra/onprem"

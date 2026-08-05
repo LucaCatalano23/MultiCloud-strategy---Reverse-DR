@@ -14,6 +14,10 @@ I file contengono placeholder `REPLACE_*` e non sono destinati a essere applicat
 
 `ingress.yaml` crea, tramite AWS Load Balancer Controller, un solo endpoint same-origin:
 
+L'origin contrattuale e `https://heliospoc.ggg.it`, identico a quello del sito
+on-prem. `REPLACE_APP_HOSTNAME` viene valorizzato esclusivamente con questo nome:
+cookie `__Host-*`, CSRF e callback Entra non devono cambiare durante il failover.
+
 | Path | Service |
 |---|---|
 | `/api/*` | `helios-bff:8000` |
@@ -22,6 +26,38 @@ I file contengono placeholder `REPLACE_*` e non sono destinati a essere applicat
 I health check sono annotati sui singoli Service (`/health/ready` per BFF, `/healthz` per web), così ogni target group usa il proprio contratto. `IngressClassParams` limita la classe ALB al namespace `helios-desk`, evitando che namespace non fidati si uniscano allo stesso IngressGroup.
 
 CloudFront/S3 non è l'endpoint canonico: non inoltra `/api`, quindi non preserva il modello BFF con cookie `__Host-*`, CSRF e callback OIDC same-origin.
+
+### Variante senza ACM: edge solo-HTTP (opt-in)
+
+Se non hai un ACM *validato pubblicamente* ma puoi **importare un self-signed in
+ACM** (`aws acm import-certificate`, già ciò che fa `provision.sh`), resta
+sull'`ingress.yaml` di default: l'edge è HTTPS e il login `__Host-*` funziona —
+è la scelta preferita. Questa variante serve **solo** quando non è caricabile
+alcun certificato sull'ALB (né ACM, né self-signed importato, né IAM server
+certificate): l'ALB non può allora esporre il listener HTTPS. In quel caso
+`ingress-http-only.yaml`, gemello di `ingress.yaml`, ha un solo listener
+`HTTP:80`, senza `certificate-arn` né `ssl-redirect`. È **opt-in**: non è in
+`kustomization.yaml`; per usarla sostituisci `- ingress.yaml` con
+`- ingress-http-only.yaml` (o applicala al posto dell'altra). Richiede solo
+`REPLACE_APP_HOSTNAME`, nessun ARN ACM.
+
+Serve a rendere osservabile il primario dal controller DR quando manca l'ACM: il
+probe di `helpdesk-dr` in modalità `CLOUD_PROBE_MODE=http` connette all'IP
+dell'ALB tenendo `Host: heliospoc.ggg.it`, e il listener `:80` risponde `200` su
+`/health/ready`. Con l'Ingress ACM di default il `ssl-redirect` restituirebbe
+invece `301`, che il probe interpreterebbe come outage.
+
+**Limite dichiarato — non è un edge di produzione per il traffico utente.** I
+cookie `__Host-*`, il CSRF e la callback OIDC richiedono `https://` same-origin
+(sezione "Endpoint canonico" qui sopra): su HTTP in chiaro il browser rifiuta i
+cookie `__Host-*` e il login si rompe. La variante è quindi adatta al probe di
+readiness / agli ambienti non-produzione; per gli utenti reali la TLS va
+comunque terminata (ACM sull'ALB o TLS a un altro livello).
+
+**Provisioning.** `provision-cli/provision.sh` (`s16_overlay`) richiede
+`CERT_ARN` e sostituisce `REPLACE_ACM_CERTIFICATE_ARN`: il percorso senza-ACM
+salta quel flusso e applica manualmente l'overlay con la variante solo-HTTP. Lo
+script non è stato modificato per questo caso.
 
 ## Placeholder
 
@@ -37,7 +73,7 @@ CloudFront/S3 non è l'endpoint canonico: non inoltra `/api`, quindi non preserv
 | `REPLACE_BACKUP_BUCKET_NAME` | output `backup_bucket_name` |
 | `REPLACE_AUTOMATION_LAMBDA_FUNCTION_NAME` | output omonimo; richiede Lambda abilitata |
 | `REPLACE_ACM_CERTIFICATE_ARN` | certificato regionale associato al dominio dell'ALB |
-| `REPLACE_APP_HOSTNAME` | hostname Route 53/DNS esterno scelto per la PoC |
+| `REPLACE_APP_HOSTNAME` | `heliospoc.ggg.it`, hostname canonico del deployment contract |
 | `REPLACE_ENTRA_API_CLIENT_ID_GUID` | `identity.audience.value` del deployment contract, fornito dal team identità |
 | altri `REPLACE_ENTRA_*` | valori non-secret forniti dal team identità (issuer, client ID BFF, endpoint OIDC) |
 

@@ -27,7 +27,7 @@ mancano.
 
 ```bash
 export REPO_ROOT=/path/to/repository
-export APP_HOST=helios.tuodominio.example
+export APP_HOST=heliospoc.ggg.it
 
 # Valori dal team identità (application demo-api-app/demo-bff-app).
 # Il tenant non è una variabile a sé: è già dentro le URL qui sotto.
@@ -53,8 +53,7 @@ export BFF_PFX=/mnt/c/Users/user/Desktop/cloud-app-dev-heliosbff-tlabpal.pfx
 ```
 
 Opzionali con default sensati: `AWS_REGION` (`eu-south-1`), `PREFIX`
-(`reverse-dr-poc`), `EKS_LOG_TYPES` (`authenticator` — vedi sotto),
-`EKS_ADMIN_ROLE_ARN` (auto-rilevato per un ruolo SSO AdministratorAccess),
+(`reverse-dr-poc`), `EKS_ADMIN_ROLE_ARN` (auto-rilevato per un ruolo SSO AdministratorAccess),
 `IMAGE_TAG` (default: short SHA di git, o un timestamp se la copia non è un
 checkout git — consigliato impostarlo, es. `poc-1`).
 
@@ -128,15 +127,28 @@ script si ferma e lo dice:
 - **PEM del certificato BFF** (`s12_bootstrap`): sono la credenziale che il team
   identità emette, non questo account.
 
-## CloudWatch
+## CloudWatch non utilizzato
 
-`EKS_LOG_TYPES` controlla il logging del control plane, che è il solo driver di
-costo CloudWatch rilevante dello stack (le metriche RPO/RTO **non** passano da
-CloudWatch: vivono nella tabella `dr_telemetry` di PostgreSQL). Default:
-`authenticator`, utile durante il bring-up per capire perché un principal viene
-rifiutato. Metti `api,audit,authenticator` per il set completo, stringa vuota per
-spegnerlo — in quel caso il log group Lambda non viene pre-creato e Lambda lo crea
-da sé alla prima invocazione, con retention infinita di default.
+Il provisioning non crea log group, mantiene disabilitati tutti i log del
+control plane EKS e non abilita gli export RDS. Il ruolo Lambda non riceve
+permessi di scrittura sui log; rieseguendo lo script, l'eventuale policy
+`AWSLambdaBasicExecutionRole` applicata da versioni precedenti viene rimossa.
+
+Le metriche RPO/RTO applicative restano nella tabella `dr_telemetry` di
+PostgreSQL. Le metriche di servizio pubblicate automaticamente da AWS possono
+comparire nella Console, ma non sono risorse configurate da questo script.
+
+I log group creati da esecuzioni precedenti non vengono cancellati
+automaticamente, perché contengono dati storici. Dopo averne verificato il
+contenuto possono essere eliminati esplicitamente:
+
+```bash
+aws logs delete-log-group --log-group-name "/aws/eks/${PREFIX:-reverse-dr-poc}/cluster"
+aws logs delete-log-group --log-group-name "/aws/lambda/${PREFIX:-reverse-dr-poc}-ticket-automation"
+```
+
+La cancellazione è definitiva; un errore `ResourceNotFoundException` indica che
+il gruppo era già assente.
 
 ## Fedeltà all'architettura
 
