@@ -70,7 +70,7 @@ REPO_ROOT="${REPO_ROOT:-/path/to/repository}"
 # Hostname applicativo: stesso valore del certificato ACM, del redirect URI
 # registrato in Entra e del record DNS. Deciso una volta, non modificabile a
 # costo zero dopo.
-APP_HOST="${APP_HOST:-}"                      # es. helios.tuodominio.example
+APP_HOST="${APP_HOST:-helpdesk.example.com}"                      # es. helios.tuodominio.example
 
 # ACM_SELF_SIGNED=1 per host interni/placeholder (es. *.azienda.lan): la CA
 # pubblica di ACM non emette per domini non pubblici (il certificato va in
@@ -85,14 +85,14 @@ ACM_SELF_SIGNED="${ACM_SELF_SIGNED:-0}"
 # Il tenant NON e' una variabile a se': e' gia' dentro le cinque URL sotto
 # (login.microsoftonline.com/<tenant>/...) e nessun campo del ConfigMap lo
 # consuma separatamente, quindi non va chiesto due volte.
-ENTRA_API_CLIENT_ID="${ENTRA_API_CLIENT_ID:-}"   # GUID, non api://...
-ENTRA_BFF_CLIENT_ID="${ENTRA_BFF_CLIENT_ID:-}"
-ENTRA_ISSUER_URL="${ENTRA_ISSUER_URL:-}"
-ENTRA_JWKS_URL="${ENTRA_JWKS_URL:-}"
-ENTRA_AUTHORIZATION_ENDPOINT="${ENTRA_AUTHORIZATION_ENDPOINT:-}"
-ENTRA_TOKEN_ENDPOINT="${ENTRA_TOKEN_ENDPOINT:-}"
-ENTRA_END_SESSION_ENDPOINT="${ENTRA_END_SESSION_ENDPOINT:-}"
-ENTRA_API_SCOPE="${ENTRA_API_SCOPE:-}"           # es. api://<api-client-id>/access_as_user
+ENTRA_API_CLIENT_ID="${ENTRA_API_CLIENT_ID:-11111111-1111-4111-8111-111111111111}"   # GUID, non api://...
+ENTRA_BFF_CLIENT_ID="${ENTRA_BFF_CLIENT_ID:-22222222-2222-4222-8222-222222222222}"
+ENTRA_ISSUER_URL="${ENTRA_ISSUER_URL:-https://login.microsoftonline.com/33333333-3333-4333-8333-333333333333/v2.0}"
+ENTRA_JWKS_URL="${ENTRA_JWKS_URL:-https://login.microsoftonline.com/33333333-3333-4333-8333-333333333333/discovery/v2.0/keys}"
+ENTRA_AUTHORIZATION_ENDPOINT="${ENTRA_AUTHORIZATION_ENDPOINT:-https://login.microsoftonline.com/33333333-3333-4333-8333-333333333333/oauth2/v2.0/authorize}"
+ENTRA_TOKEN_ENDPOINT="${ENTRA_TOKEN_ENDPOINT:-https://login.microsoftonline.com/33333333-3333-4333-8333-333333333333/oauth2/v2.0/token}"
+ENTRA_END_SESSION_ENDPOINT="${ENTRA_END_SESSION_ENDPOINT:-https://login.microsoftonline.com/33333333-3333-4333-8333-333333333333/oauth2/v2.0/logout}"
+ENTRA_API_SCOPE="${ENTRA_API_SCOPE:-api://11111111-1111-4111-8111-111111111111/access_as_user}"           # es. api://<api-client-id>/access_as_user
 
 # Credenziale confidenziale del BFF (private_key_jwt). Due modi, uno solo serve:
 #  - BFF_PFX: un unico file PKCS#12 (.pfx), il formato tipico esportato da
@@ -100,7 +100,7 @@ ENTRA_API_SCOPE="${ENTRA_API_SCOPE:-}"           # es. api://<api-client-id>/acc
 #    la password in modo interattivo.
 #  - BFF_KEY_PEM / BFF_CERT_PEM: i due PEM gia' separati.
 # Se BFF_PFX e' impostato ha precedenza sui due PEM.
-BFF_PFX="${BFF_PFX:-}"
+BFF_PFX="${BFF_PFX:-/mnt/c/Users/user/Desktop/cloud-app-dev-heliosbff-tlabpal.pfx}"
 BFF_KEY_PEM="${BFF_KEY_PEM:-/tmp/bff-key.pem}"
 BFF_CERT_PEM="${BFF_CERT_PEM:-/tmp/bff-cert.pem}"
 
@@ -626,7 +626,7 @@ s06_eks() {
     aws eks create-cluster --name "$PREFIX" \
       --role-arn "arn:aws:iam::${ACCOUNT_ID}:role/${PREFIX}-eks-cluster" \
       --resources-vpc-config "subnetIds=${PRIV_PRIMARY_SUBNET},${PRIV_WITNESS_SUBNET},endpointPublicAccess=false,endpointPrivateAccess=true" \
-      --access-config "authenticationMode=API,bootstrapClusterCreatorAdminPermissions=false" \
+      --access-config "authenticationMode=API_AND_CONFIG_MAP,bootstrapClusterCreatorAdminPermissions=true" \
       --logging "$logging" >/dev/null
     log "Creazione cluster in corso (~10 min)..."
     aws eks wait cluster-active --name "$PREFIX"
@@ -1090,10 +1090,20 @@ s12_bootstrap() {
     --from-literal=MASTER_URL="$master_url" --from-literal=APP_PASSWORD="$app_pw"
 
   # Utente applicativo ristretto: il master non va usato dai workload.
-  kubectl -n "$K8S_NAMESPACE" run pg-bootstrap --rm -i --restart=Never \
+  kubectl -n "$K8S_NAMESPACE" run pg-bootstrap --restart=Never \
     --image=postgres:16-alpine \
     --overrides='{"spec":{"containers":[{"name":"pg","image":"postgres:16-alpine","command":["sh","-c","psql \"$MASTER_URL\" -v ON_ERROR_STOP=1 -v pw=\"$APP_PASSWORD\" -f -"],"stdin":true,"envFrom":[{"secretRef":{"name":"pg-bootstrap"}}]}]}}' <<'SQL'
-CREATE ROLE helios_app LOGIN PASSWORD :'pw';
+DO $$
+  BEGIN
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_roles
+      WHERE rolname = 'helios_app'
+    ) THEN
+      CREATE ROLE helios_app LOGIN PASSWORD :'pw';
+    END IF;
+  END
+$$;
 GRANT CONNECT ON DATABASE helios TO helios_app;
 GRANT USAGE, CREATE ON SCHEMA public TO helios_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO helios_app;

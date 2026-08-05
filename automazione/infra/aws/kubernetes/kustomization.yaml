@@ -19,16 +19,16 @@ labels:
 images:
   - name: helios-web
     newName: REPLACE_FRONTEND_ECR_REPOSITORY
-    newTag: REPLACE_IMAGE_TAG
+    newTag: "REPLACE_IMAGE_TAG"
   - name: helios-bff
     newName: REPLACE_BFF_ECR_REPOSITORY
-    newTag: REPLACE_IMAGE_TAG
+    newTag: "REPLACE_IMAGE_TAG"
   - name: helios-ticket-service
     newName: REPLACE_TICKET_ECR_REPOSITORY
-    newTag: REPLACE_IMAGE_TAG
+    newTag: "REPLACE_IMAGE_TAG"
   - name: helios-automation-service
     newName: REPLACE_AUTOMATION_ECR_REPOSITORY
-    newTag: REPLACE_IMAGE_TAG
+    newTag: "REPLACE_IMAGE_TAG"
   - name: helios-postgres-backup
     newName: REPLACE_AUTOMATION_ECR_REPOSITORY
     newTag: REPLACE_BACKUP_IMAGE_TAG
