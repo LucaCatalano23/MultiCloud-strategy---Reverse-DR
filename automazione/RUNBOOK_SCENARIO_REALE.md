@@ -712,8 +712,10 @@ l'RTO viene scritto dal playbook e compare dopo il primo failover.
 - **Nessun produttore di backup nel lab.** `restore-onprem.sh` ripristina nel
   database `helios` in formato custom, coerente con il CronJob del primario; ma
   quel CronJob e la metrica RPO vivono sul primario AWS reale, non in laboratorio.
-  In lab il backup del drill è uno stand-in creato a mano, e il trasporto verso
-  il mirror on-prem è manuale.
+  Con un primario AWS reale il mirror on-prem viene rifornito automaticamente da
+  `helpdesk-dr-backup-mirror.timer` (pull da S3 ogni 2 min, con retention e verifica
+  del checksum). In lab sim senza AWS il produttore non esiste: il backup del drill
+  resta uno stand-in creato a mano e messo nel mirror manualmente.
 - Il control plane AWS via LocalStack è stato rimosso: `AUTOMATION_MODE=aws-lambda`
   è verificabile solo sul primario AWS, non in lab.
 - Il drill spegne `cloud-k3s` (dominio di guasto del lab), non EKS reale.

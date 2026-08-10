@@ -1,0 +1,26 @@
+[Unit]
+Description=Helios DR backup mirror from the primary S3 bucket
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/opt/helpdesk-dr/scripts/backup/mirror-from-s3.sh
+ConditionPathExists=/etc/helpdesk-dr/config.env
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/helpdesk-dr
+Environment=HELPDESK_DR_CONFIG_FILE=/etc/helpdesk-dr/config.env
+ExecStart=/usr/local/bin/helpdesk-dr backup/mirror-from-s3
+RuntimeDirectory=helpdesk-dr
+RuntimeDirectoryMode=0750
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/srv/helpdesk-dr-mirror
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true

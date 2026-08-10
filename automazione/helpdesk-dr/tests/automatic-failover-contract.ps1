@@ -45,6 +45,31 @@ Assert-Contains $defaults 'DR_CONTROLLER_RETRY_COOLDOWN_SECONDS=' `
     'A failed promotion must have a retry cooldown.'
 Assert-Contains $defaults 'DR_AUTO_FAILOVER_ENABLED="false"' `
     'Automatic promotion must be explicitly armed after selecting the cloud target.'
+Assert-Contains $defaults 'BACKUP_MIRROR_RETENTION="2"' `
+    'The on-prem backup mirror must default to keeping the two most-recent backups.'
+
+$mirrorScript = Read-RequiredFile 'scripts/backup/mirror-from-s3.sh'
+Assert-Contains $mirrorScript 'BACKUP_S3_BUCKET' `
+    'The backup mirror must pull from the configured primary S3 bucket.'
+Assert-Contains $mirrorScript 'sha256sum' `
+    'The backup mirror must verify each downloaded backup by checksum.'
+Assert-Contains $mirrorScript 'mirror left untouched' `
+    'A failed S3 listing must never prune the mirror, so the last-good backup survives a cloud outage.'
+Assert-Contains $mirrorScript 'BACKUP_MIRROR_RETENTION' `
+    'The backup mirror must keep only the configured number of most-recent backups.'
+
+$mirrorService = Read-RequiredFile 'systemd/helpdesk-dr-backup-mirror.service'
+Assert-Contains $mirrorService 'ExecStart=/usr/local/bin/helpdesk-dr backup/mirror-from-s3' `
+    'The mirror service must run the S3 sync through the dispatcher.'
+Assert-Contains $mirrorService 'ReadWritePaths=/srv/helpdesk-dr-mirror' `
+    'The hardened mirror service must be allowed to write only the mirror directory.'
+
+$mirrorTimer = Read-RequiredFile 'systemd/helpdesk-dr-backup-mirror.timer'
+Assert-Contains $mirrorTimer 'OnUnitActiveSec=2min' `
+    'The cloud backup presence check must run every 2 minutes.'
+
+Assert-Contains $bootstrap 'helpdesk-dr-backup-mirror.timer' `
+    'The coordinator bootstrap must install the backup mirror timer.'
 
 $library = Read-RequiredFile 'scripts/common/lib.sh'
 Assert-Contains $library 'cloud_ready_https' 'The DR library must support a real HTTPS cloud probe.'

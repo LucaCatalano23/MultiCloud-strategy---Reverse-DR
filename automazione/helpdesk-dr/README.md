@@ -248,7 +248,7 @@ Scelta architetturale:
 
 Le due metriche sono ora **misurate** e visibili in dashboard; la definizione completa, con ciò che includono e ciò che non includono, è in [`../RUNBOOK_SCENARIO_REALE.md`](../RUNBOOK_SCENARIO_REALE.md#rpo-e-rto-misurabili).
 
-- RPO: eta' dell'ultimo backup registrato dal CronJob (`backup.last_success`). Nel lab dipende ancora da quando è stato prodotto il backup presente in `BACKUP_MIRROR_DIR` su `ansible-node`, perché il timer automatico di backup/mirror è stato rimosso insieme a LocalStack.
+- RPO: eta' dell'ultimo backup registrato dal CronJob (`backup.last_success`). Con un primario AWS reale il mirror on-prem in `BACKUP_MIRROR_DIR` su `ansible-node` viene rifornito automaticamente da `helpdesk-dr-backup-mirror.timer` (ogni 2 min tira da S3 i `BACKUP_MIRROR_RETENTION` backup piu' recenti, verificati per checksum); nel lab sim senza AWS reale il timer resta disabilitato e vale lo staging manuale.
 - RTO: durata misurata del playbook di failover (`failover.last_promotion`): restore on-prem + preflight + rollout + aggiornamento DNS, escluso il tempo di rilevamento del guasto.
 
 La generazione corrente (`automazione/apps`, `automazione/infra`) copre EKS, S3, IAM e Lambda su AWS reale; questa PoC legacy non simula piu' quelle API via LocalStack.

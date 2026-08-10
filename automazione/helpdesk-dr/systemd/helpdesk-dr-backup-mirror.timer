@@ -1,0 +1,11 @@
+[Unit]
+Description=Mirror the primary S3 backups to the on-prem DR mirror every 2 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=15s
+Unit=helpdesk-dr-backup-mirror.service
+
+[Install]
+WantedBy=timers.target

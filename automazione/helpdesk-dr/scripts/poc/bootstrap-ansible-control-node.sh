@@ -25,7 +25,7 @@ fi
 # interrupted" e i retry ripeterebbero lo stesso errore su uno stato rotto.
 exec_ansible dpkg --configure -a
 exec_ansible apt-get update
-exec_ansible env DEBIAN_FRONTEND=noninteractive apt-get install -y ansible-core git ca-certificates curl gzip snapd unzip
+exec_ansible env DEBIAN_FRONTEND=noninteractive apt-get install -y ansible-core git ca-certificates curl gzip snapd unzip awscli
 
 lxd_snap_state="$(exec_ansible sh -lc 'if snap list lxd >/dev/null 2>&1; then printf ready; fi')"
 if [ "${lxd_snap_state}" != "ready" ]; then
@@ -71,6 +71,9 @@ exec_ansible bash -lc "
   test -f ${CONTROL_DIR}/ansible/inventory.ini
   test -f ${CONTROL_DIR}/ansible/playbooks/failover.yml
   test -f ${CONTROL_DIR}/systemd/helpdesk-dr-controller.service
+  test -f ${CONTROL_DIR}/systemd/helpdesk-dr-backup-mirror.service
+  test -f ${CONTROL_DIR}/systemd/helpdesk-dr-backup-mirror.timer
+  test -f ${CONTROL_DIR}/scripts/backup/mirror-from-s3.sh
   test -f ${CONTROL_DIR}/infra/onprem/kustomization.yaml
   test -f ${CONTROL_DIR}/contracts/deployment-contract.json
   cd ${CONTROL_DIR}
@@ -97,6 +100,27 @@ exec_ansible systemctl daemon-reload
 exec_ansible systemctl enable --now helpdesk-dr-controller.service
 exec_ansible systemctl is-enabled --quiet helpdesk-dr-controller.service
 exec_ansible systemctl is-active --quiet helpdesk-dr-controller.service
+
+# Mirror automatico dei backup dal primario (S3) verso il mirror on-prem, ogni 2
+# minuti: alimenta restore-onprem.sh e sostituisce il trasporto manuale. Il timer
+# viene abilitato solo quando BACKUP_S3_BUCKET e' configurato, cosi' il lab sim
+# senza AWS reale non ha un servizio che fallisce a ogni ciclo.
+exec_ansible install -d -m 0700 "${BACKUP_MIRROR_DIR}"
+exec_ansible install -m 0644 \
+  "${CONTROL_DIR}/systemd/helpdesk-dr-backup-mirror.service" \
+  /etc/systemd/system/helpdesk-dr-backup-mirror.service
+exec_ansible install -m 0644 \
+  "${CONTROL_DIR}/systemd/helpdesk-dr-backup-mirror.timer" \
+  /etc/systemd/system/helpdesk-dr-backup-mirror.timer
+exec_ansible systemctl daemon-reload
+if [ -n "${BACKUP_S3_BUCKET:-}" ]; then
+  exec_ansible systemctl enable --now helpdesk-dr-backup-mirror.timer
+  exec_ansible systemctl is-enabled --quiet helpdesk-dr-backup-mirror.timer
+  echo "Backup mirror: enabled (every 2 min from s3://${BACKUP_S3_BUCKET})."
+else
+  exec_ansible systemctl disable helpdesk-dr-backup-mirror.timer 2>/dev/null || true
+  echo "Backup mirror: BACKUP_S3_BUCKET unset -> timer installed but disabled (lab sim uses manual staging)."
+fi
 
 exec_ansible bash -lc "cd ${CONTROL_DIR} && git rev-parse --short HEAD && lxc list --format compact >/dev/null"
 

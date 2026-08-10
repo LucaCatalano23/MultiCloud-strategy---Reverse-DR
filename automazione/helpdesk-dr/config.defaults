@@ -50,6 +50,12 @@ POSTGRES_USER="helpdesk"
 BACKUP_DIR="/srv/helpdesk-backups"
 BACKUP_S3_PREFIX="postgres"
 BACKUP_MIRROR_DIR="/srv/helpdesk-dr-mirror"
+# Bucket S3 dei backup del primario, da cui il sito DR sincronizza il mirror
+# on-prem (stesso bucket in cui scrive il CronJob helios-postgres-backup, infra/aws).
+# Vuoto = mirror automatico disattivo. La credenziale S3 read-only va in config.env.
+BACKUP_S3_BUCKET=""
+# Quanti backup piu' recenti tiene il mirror on-prem; gli altri vengono eliminati.
+BACKUP_MIRROR_RETENTION="2"
 
 AWS_REGION="eu-west-1"
 HELPDESK_LAMBDA_FUNCTION_NAME="helpdesk-ticket-processor"
