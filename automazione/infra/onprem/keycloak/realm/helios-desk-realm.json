@@ -92,14 +92,14 @@
       "fullScopeAllowed": false,
       "frontchannelLogout": true,
       "redirectUris": [
-        "https://heliospoc.ggg.it/api/v1/auth/callback"
+        "https://heliospoc.terna.it/api/v1/auth/callback"
       ],
       "webOrigins": [
-        "https://heliospoc.ggg.it"
+        "https://heliospoc.terna.it"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "https://heliospoc.ggg.it/",
+        "post.logout.redirect.uris": "https://heliospoc.terna.it/",
         "use.refresh.tokens": "true"
       },
       "defaultClientScopes": [

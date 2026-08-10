@@ -12,11 +12,11 @@
 #     risponde 200 invece di reindirizzare (301) verso HTTPS.
 # Il routing resta host-based su REPLACE_APP_HOSTNAME: il probe DR in modalita'
 # `http` (helpdesk-dr, CLOUD_PROBE_MODE=http) connette all'IP dell'ALB tenendo
-# `Host: heliospoc.ggg.it`, e la regola qui sotto lo instrada verso helios-bff.
+# `Host: heliospoc.terna.it`, e la regola qui sotto lo instrada verso helios-bff.
 #
 # LIMITE DICHIARATO — non e' un edge di produzione per il traffico utente:
 # i cookie `__Host-*`, il CSRF double-submit e la callback OIDC di Entra
-# richiedono `https://heliospoc.ggg.it` same-origin (vedi README, "Endpoint
+# richiedono `https://heliospoc.terna.it` same-origin (vedi README, "Endpoint
 # canonico"). Su HTTP in chiaro il browser rifiuta i cookie `__Host-*` e il login
 # si rompe. Questa variante serve al probe di readiness / health e agli ambienti
 # non-produzione; per gli utenti reali la TLS va comunque terminata da qualche

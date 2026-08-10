@@ -15,10 +15,10 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - heliospoc.ggg.it
+        - heliospoc.terna.it
       secretName: helios-app-tls
   rules:
-    - host: heliospoc.ggg.it
+    - host: heliospoc.terna.it
       http:
         paths:
           - path: /api

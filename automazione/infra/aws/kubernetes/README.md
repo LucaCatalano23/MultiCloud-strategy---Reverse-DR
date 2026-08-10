@@ -14,7 +14,7 @@ I file contengono placeholder `REPLACE_*` e non sono destinati a essere applicat
 
 `ingress.yaml` crea, tramite AWS Load Balancer Controller, un solo endpoint same-origin:
 
-L'origin contrattuale e `https://heliospoc.ggg.it`, identico a quello del sito
+L'origin contrattuale e `https://heliospoc.terna.it`, identico a quello del sito
 on-prem. `REPLACE_APP_HOSTNAME` viene valorizzato esclusivamente con questo nome:
 cookie `__Host-*`, CSRF e callback Entra non devono cambiare durante il failover.
 
@@ -43,7 +43,7 @@ certificate): l'ALB non può allora esporre il listener HTTPS. In quel caso
 
 Serve a rendere osservabile il primario dal controller DR quando manca l'ACM: il
 probe di `helpdesk-dr` in modalità `CLOUD_PROBE_MODE=http` connette all'IP
-dell'ALB tenendo `Host: heliospoc.ggg.it`, e il listener `:80` risponde `200` su
+dell'ALB tenendo `Host: heliospoc.terna.it`, e il listener `:80` risponde `200` su
 `/health/ready`. Con l'Ingress ACM di default il `ssl-redirect` restituirebbe
 invece `301`, che il probe interpreterebbe come outage.
 
@@ -73,7 +73,7 @@ script non è stato modificato per questo caso.
 | `REPLACE_BACKUP_BUCKET_NAME` | output `backup_bucket_name` |
 | `REPLACE_AUTOMATION_LAMBDA_FUNCTION_NAME` | output omonimo; richiede Lambda abilitata |
 | `REPLACE_ACM_CERTIFICATE_ARN` | certificato regionale associato al dominio dell'ALB |
-| `REPLACE_APP_HOSTNAME` | `heliospoc.ggg.it`, hostname canonico del deployment contract |
+| `REPLACE_APP_HOSTNAME` | `heliospoc.terna.it`, hostname canonico del deployment contract |
 | `REPLACE_ENTRA_API_CLIENT_ID_GUID` | `identity.audience.value` del deployment contract, fornito dal team identità |
 | altri `REPLACE_ENTRA_*` | valori non-secret forniti dal team identità (issuer, client ID BFF, endpoint OIDC) |
 

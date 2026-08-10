@@ -27,7 +27,7 @@ mancano.
 
 ```bash
 export REPO_ROOT=/path/to/repository
-export APP_HOST=heliospoc.ggg.it
+export APP_HOST=heliospoc.terna.it
 
 # Valori dal team identità (application demo-api-app/demo-bff-app).
 # Il tenant non è una variabile a sé: è già dentro le URL qui sotto.

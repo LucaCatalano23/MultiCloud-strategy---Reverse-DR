@@ -226,7 +226,7 @@ può essere creato senza l'ARN del certificato.
 ### 3.1 Scegliere l'hostname
 
 ```bash
-export APP_HOST=heliospoc.ggg.it           # origin canonico cloud/on-prem
+export APP_HOST=heliospoc.terna.it           # origin canonico cloud/on-prem
 ```
 
 L'hostname deve essere HTTPS e stabile perché il BFF usa cookie `__Host-*`, che richiedono
@@ -856,7 +856,7 @@ unset MASTER_PASSWORD MASTER_URL
 
 ```bash
 umask 077
-jq -n --arg url "postgresql+asyncpg://helios_app:${APP_PASSWORD}@${RDS_HOST}/${DB_NAME}?ssl=require" \
+jq -n --arg url "postgresql+asyncpg://helios_app:${APP_PASSWORD}@${RDS_HOST}/${DB_NAME}?sslmode=require" \
   '{DATABASE_URL:$url}' > /tmp/db-secret.json
 
 # La chiave privata e il certificato del BFF arrivano dal team identita' (§2.1).

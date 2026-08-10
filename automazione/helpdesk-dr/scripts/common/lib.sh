@@ -439,7 +439,7 @@ validate_cloud_probe_config() {
 }
 
 # Connette direttamente all'IP o al DNS name dell'ALB, ma mantiene
-# heliospoc.ggg.it come URL, Host e TLS SNI. In questo modo il probe continua a
+# heliospoc.terna.it come URL, Host e TLS SNI. In questo modo il probe continua a
 # osservare il primary anche dopo che il DNS applicativo e' passato al DR. Con un
 # cert non attendibile (es. self-signed importato in ACM) la verifica si rilassa
 # via CLOUD_TARGET_CA_FILE (CA pinnata) o CLOUD_TARGET_INSECURE=true.
@@ -476,7 +476,7 @@ cloud_ready_https() {
 }
 
 # Variante senza TLS per ALB privi di ACM. Connette direttamente all'IP (o
-# hostname) dell'ALB via HTTP in chiaro, ma tiene heliospoc.ggg.it come Host per
+# hostname) dell'ALB via HTTP in chiaro, ma tiene heliospoc.terna.it come Host per
 # far combaciare la regola host-based dell'Ingress e osservare sempre il primary
 # anche quando il DNS applicativo e' gia' passato al DR. Limiti (nessuna verifica
 # TLS; l'IP dell'ALB e' dinamico e va aggiornato a mano; l'ALB deve servire HTTP

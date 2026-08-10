@@ -55,11 +55,11 @@ Il secret di cifratura sessione on-prem deve essere diverso da quello cloud. Dop
 
 ## Prerequisiti e secret
 
-Il nome applicativo e sempre `heliospoc.ggg.it`: nel lab BIND pubblica una zona
+Il nome applicativo e sempre `heliospoc.terna.it`: nel lab BIND pubblica una zona
 host-specific split-horizon e ne sposta l'apice tra cloud e on-prem, senza
 diventare autorevole per tutta `ggg.it`. `auth.azienda.lan` punta sempre al k3s
 on-prem ed e l'issuer Keycloak LXCLab. Il certificato applicativo deve includere
-`heliospoc.ggg.it`, quello di identita `auth.azienda.lan`. Non sono presenti
+`heliospoc.terna.it`, quello di identita `auth.azienda.lan`. Non sono presenti
 manifest `Secret` versionati.
 
 I Secret **non sono piu' creati direttamente nel cluster**: la fonte di verita' del sito DR e' OpenBao sul nodo `vault-openbao`, e nel cluster li materializza External Secrets Operator a partire da `secrets/external-secrets.yaml`. E' lo stesso meccanismo del sito primario, dove il backend e' AWS Secrets Manager: i Deployment non cambiano fra i due siti perche' il contratto e' il **nome** del Secret, non la sua origine. Dettagli, layout dei percorsi KV e limiti dichiarati in [`../vault/README.md`](../vault/README.md).

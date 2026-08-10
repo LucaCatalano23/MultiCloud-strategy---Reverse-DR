@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-CANONICAL_APPLICATION_ORIGIN = "https://heliospoc.ggg.it"
+CANONICAL_APPLICATION_ORIGIN = "https://heliospoc.terna.it"
 ENTRA_AUTHORITY = "https://login.microsoftonline.com"
 ENTRA_MULTITENANT_AUTHORITIES = frozenset({"common", "organizations", "consumers"})
 KEYCLOAK_PUBLIC_REALM = "https://auth.azienda.lan/realms/helios-desk"

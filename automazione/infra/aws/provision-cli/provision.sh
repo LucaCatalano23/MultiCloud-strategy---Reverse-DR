@@ -64,7 +64,7 @@ REPO_ROOT="${REPO_ROOT:-/path/to/repository}"
 # Hostname applicativo: stesso valore del certificato ACM, del redirect URI
 # registrato in Entra e del record DNS. Deciso una volta, non modificabile a
 # costo zero dopo.
-CANONICAL_APP_HOST="heliospoc.ggg.it"
+CANONICAL_APP_HOST="heliospoc.terna.it"
 APP_HOST="${APP_HOST:-${CANONICAL_APP_HOST}}"                     # override: es. helios.tuodominio.example
 
 # ACM_SELF_SIGNED=1 per host interni/placeholder (es. *.azienda.lan): la CA
@@ -73,7 +73,7 @@ APP_HOST="${APP_HOST:-${CANONICAL_APP_HOST}}"                     # override: es
 # APP_HOST e lo importa in ACM. Il browser mostra un avviso, ma TLS sull'ALB,
 # login OIDC e cookie __Host-* funzionano: e' un limite PoC dichiarato, non un
 # malfunzionamento. Con 0 si usa la validazione DNS pubblica.
-ACM_SELF_SIGNED="${ACM_SELF_SIGNED:-0}"
+ACM_SELF_SIGNED="${ACM_SELF_SIGNED:-1}"
 
 # Valori consegnati dal team identita' aziendale (application registration
 # demo-api-app-* e demo-bff-app-*). Sono non-secret.
@@ -1082,66 +1082,336 @@ _bff_pems_from_pfx() {
 # =============================================================================
 # s12_bootstrap — §12: kubeconfig, utente DB applicativo, valori dei secret
 # =============================================================================
+# =============================================================================
+# s12_bootstrap — §12: kubeconfig, utente DB applicativo, valori dei secret
+# =============================================================================
 s12_bootstrap() {
   require_vars DB_HOST ACCOUNT_ID
   need openssl
+  need jq
+  need python3
+
   _bff_pems_from_pfx
-  [ -r "$BFF_KEY_PEM" ]  || die "PEM chiave BFF non leggibile: $BFF_KEY_PEM (imposta BFF_PFX o BFF_KEY_PEM, vedi §2.1)"
-  [ -r "$BFF_CERT_PEM" ] || die "PEM certificato BFF non leggibile: $BFF_CERT_PEM (imposta BFF_PFX o BFF_CERT_PEM, vedi §2.1)"
+
+  [ -r "$BFF_KEY_PEM" ] || \
+    die "PEM chiave BFF non leggibile: $BFF_KEY_PEM (imposta BFF_PFX o BFF_KEY_PEM, vedi §2.1)"
+
+  [ -r "$BFF_CERT_PEM" ] || \
+    die "PEM certificato BFF non leggibile: $BFF_CERT_PEM (imposta BFF_PFX o BFF_CERT_PEM, vedi §2.1)"
 
   _ensure_kubeconfig
 
   umask 077
-  local master_arn master_pw app_pw master_url
-  master_arn=$(aws rds describe-db-instances --db-instance-identifier "${PREFIX}-postgres" \
-    --query 'DBInstances[0].MasterUserSecret.SecretArn' --output text)
-  master_pw=$(aws secretsmanager get-secret-value --secret-id "$master_arn" \
-    --query SecretString --output text | jq -r .password)
-  app_pw=$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9' | cut -c1-32)
-  master_url="postgresql://${DB_MASTER_USER}:$(printf '%s' "$master_pw" | jq -sRr @uri)@${DB_HOST}/${DB_NAME}?sslmode=require"
 
-  kubectl create namespace "$K8S_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
-  kubectl -n "$K8S_NAMESPACE" delete secret pg-bootstrap --ignore-not-found
+  local master_arn
+  local master_pw
+  local master_pw_encoded
+  local app_pw
+  local master_url
+  local bootstrap_status
+  local bootstrap_deadline
+  local db_secret_file
+  local config_secret_file
+
+  db_secret_file=$(mktemp /tmp/helios-db-secret.XXXXXX.json)
+  config_secret_file=$(mktemp /tmp/helios-config-secret.XXXXXX.json)
+
+  # ---------------------------------------------------------------------------
+  # Recupero credenziali master RDS
+  # ---------------------------------------------------------------------------
+  master_arn=$(
+    aws rds describe-db-instances \
+      --db-instance-identifier "${PREFIX}-postgres" \
+      --query 'DBInstances[0].MasterUserSecret.SecretArn' \
+      --output text
+  )
+
+  [ -n "$master_arn" ] && [ "$master_arn" != "None" ] || \
+    die "ARN del secret master RDS non disponibile."
+
+  master_pw=$(
+    aws secretsmanager get-secret-value \
+      --secret-id "$master_arn" \
+      --query SecretString \
+      --output text |
+    jq -er '.password'
+  )
+
+  [ -n "$master_pw" ] || die "Password master RDS vuota o non disponibile."
+
+  # Codifica URL della password master, perché potrebbe contenere caratteri
+  # riservati come @, :, /, ?, # o %.
+  master_pw_encoded=$(
+    printf '%s' "$master_pw" |
+    jq -sRr @uri
+  )
+
+  # La password applicativa contiene solo caratteri URL-safe.
+  app_pw=$(
+    openssl rand -base64 48 |
+    tr -dc 'A-Za-z0-9' |
+    head -c 32
+  )
+
+  [ "${#app_pw}" -eq 32 ] || \
+    die "Generazione della password applicativa fallita."
+
+  master_url="postgresql://${DB_MASTER_USER}:${master_pw_encoded}@${DB_HOST}/${DB_NAME}?sslmode=require"
+
+  # Non mantenere la password master più a lungo del necessario nella variabile
+  # non codificata.
+  unset master_pw
+
+  # ---------------------------------------------------------------------------
+  # Namespace e pulizia dei residui
+  # ---------------------------------------------------------------------------
+  kubectl create namespace "$K8S_NAMESPACE" \
+    --dry-run=client \
+    -o yaml |
+  kubectl apply -f -
+
+  # Un Job o un pod residuo impedirebbe la creazione della nuova risorsa.
+  kubectl -n "$K8S_NAMESPACE" delete job pg-bootstrap \
+    --ignore-not-found \
+    --wait=true
+
+  kubectl -n "$K8S_NAMESPACE" delete pod pg-bootstrap \
+    --ignore-not-found \
+    --wait=true
+
+  kubectl -n "$K8S_NAMESPACE" delete secret pg-bootstrap \
+    --ignore-not-found
+
+  # ---------------------------------------------------------------------------
+  # Secret Kubernetes temporaneo
+  # ---------------------------------------------------------------------------
   kubectl -n "$K8S_NAMESPACE" create secret generic pg-bootstrap \
-    --from-literal=MASTER_URL="$master_url" --from-literal=APP_PASSWORD="$app_pw"
+    --from-literal=MASTER_URL="$master_url" \
+    --from-literal=APP_PASSWORD="$app_pw"
 
-  # Utente applicativo ristretto: il master non va usato dai workload.
-  kubectl -n "$K8S_NAMESPACE" run pg-bootstrap --restart=Never \
-    --image=postgres:16-alpine \
-    --overrides='{"spec":{"containers":[{"name":"pg","image":"postgres:16-alpine","command":["sh","-c","psql \"$MASTER_URL\" -v ON_ERROR_STOP=1 -v pw=\"$APP_PASSWORD\" -f -"],"stdin":true,"envFrom":[{"secretRef":{"name":"pg-bootstrap"}}]}]}}' <<'SQL'
-DO $$
-  BEGIN
-    IF NOT EXISTS (
-      SELECT 1
-      FROM pg_roles
-      WHERE rolname = 'helios_app'
-    ) THEN
-      CREATE ROLE helios_app LOGIN PASSWORD :'pw';
-    END IF;
-  END
-$$;
-GRANT CONNECT ON DATABASE helios TO helios_app;
-GRANT USAGE, CREATE ON SCHEMA public TO helios_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO helios_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO helios_app;
-SQL
-  kubectl -n "$K8S_NAMESPACE" delete secret pg-bootstrap
+  # La URL master ora è memorizzata nel Secret Kubernetes temporaneo.
+  unset master_url master_pw_encoded
 
-  # §12.3 — valori dei due secret. La chiave privata via --rawfile per
-  # preservare i newline PEM; OIDC_CLIENT_AUTH_METHOD=private_key_jwt sul primario.
-  jq -n --arg url "postgresql+asyncpg://helios_app:${app_pw}@${DB_HOST}/${DB_NAME}?ssl=require" \
-    '{DATABASE_URL:$url}' > /tmp/db-secret.json
-  jq -n --arg key "$(openssl rand -base64 48)" \
-    --rawfile pk "$BFF_KEY_PEM" --rawfile cert "$BFF_CERT_PEM" \
-    '{OIDC_CLIENT_PRIVATE_KEY:$pk,OIDC_CLIENT_CERTIFICATE:$cert,SESSION_ENCRYPTION_KEY:$key}' > /tmp/config-secret.json
+  # ---------------------------------------------------------------------------
+  # Job PostgreSQL
+  #
+  # Non viene usato "kubectl run --rm -i", perché:
+  # - dipende da una sessione interattiva;
+  # - può andare in timeout mentre il pod è Pending;
+  # - può eliminare il pod prima di poter leggere i log;
+  # - rende difficile distinguere errori SQL, CNI e scheduling.
+  # ---------------------------------------------------------------------------
+  cat <<'YAML' |
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pg-bootstrap
+  labels:
+    app.kubernetes.io/name: pg-bootstrap
+    app.kubernetes.io/part-of: helios-desk
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pg-bootstrap
+        app.kubernetes.io/part-of: helios-desk
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: pg
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: pg-bootstrap
+          command:
+            - sh
+            - -ec
+          args:
+            - |
+              psql "$MASTER_URL" \
+                -v ON_ERROR_STOP=1 \
+                -v pw="$APP_PASSWORD" <<'SQL'
+              SELECT format(
+                'CREATE ROLE helios_app LOGIN PASSWORD %L',
+                :'pw'
+              )
+              WHERE NOT EXISTS (
+                SELECT 1
+                FROM pg_roles
+                WHERE rolname = 'helios_app'
+              )
+              \gexec
 
-  aws secretsmanager put-secret-value --secret-id "${PREFIX}/application/database" --secret-string file:///tmp/db-secret.json >/dev/null
-  aws secretsmanager put-secret-value --secret-id "${PREFIX}/application/config"   --secret-string file:///tmp/config-secret.json >/dev/null
-  shred -u /tmp/db-secret.json /tmp/config-secret.json
-  # I PEM estratti dal .pfx sono materiale confidenziale temporaneo: distruggili.
-  # Quelli forniti direttamente dall'utente restano dove sono.
-  [ "$BFF_PEMS_ARE_TEMP" = "1" ] && shred -u "$BFF_KEY_PEM" "$BFF_CERT_PEM" || true
-  log "Utente helios_app creato e secret popolati."
+              ALTER ROLE helios_app
+                WITH LOGIN PASSWORD :'pw';
+
+              GRANT CONNECT
+                ON DATABASE helios
+                TO helios_app;
+
+              GRANT USAGE, CREATE
+                ON SCHEMA public
+                TO helios_app;
+
+              ALTER DEFAULT PRIVILEGES
+                IN SCHEMA public
+                GRANT SELECT, INSERT, UPDATE, DELETE
+                ON TABLES
+                TO helios_app;
+
+              ALTER DEFAULT PRIVILEGES
+                IN SCHEMA public
+                GRANT USAGE, SELECT
+                ON SEQUENCES
+                TO helios_app;
+              SQL
+YAML
+  kubectl -n "$K8S_NAMESPACE" apply -f -
+
+  log "Attendo il completamento del Job pg-bootstrap..."
+
+  # ---------------------------------------------------------------------------
+  # Attesa esplicita del Job
+  #
+  # kubectl wait --for=condition=complete aspetterebbe fino al timeout anche se
+  # il Job fosse già Failed. Il ciclo controlla entrambe le condizioni.
+  # ---------------------------------------------------------------------------
+  bootstrap_status=""
+  bootstrap_deadline=$((SECONDS + ${PG_BOOTSTRAP_TIMEOUT_SECONDS:-360}))
+
+  while [ "$SECONDS" -lt "$bootstrap_deadline" ]; do
+    if [ "$(
+      kubectl -n "$K8S_NAMESPACE" get job pg-bootstrap \
+        -o jsonpath='{.status.succeeded}' \
+        2>/dev/null || true
+    )" = "1" ]; then
+      bootstrap_status="complete"
+      break
+    fi
+
+    if [ "$(
+      kubectl -n "$K8S_NAMESPACE" get job pg-bootstrap \
+        -o jsonpath='{.status.failed}' \
+        2>/dev/null || true
+    )" != "" ]; then
+      bootstrap_status="failed"
+      break
+    fi
+
+    sleep 5
+  done
+
+  # ---------------------------------------------------------------------------
+  # Diagnostica in caso di errore
+  # ---------------------------------------------------------------------------
+  if [ "$bootstrap_status" != "complete" ]; then
+    warn "Bootstrap PostgreSQL non completato: stato=${bootstrap_status:-timeout}."
+
+    kubectl -n "$K8S_NAMESPACE" describe job pg-bootstrap >&2 || true
+
+    kubectl -n "$K8S_NAMESPACE" get pods \
+      -l job-name=pg-bootstrap \
+      -o wide >&2 || true
+
+    kubectl -n "$K8S_NAMESPACE" describe pods \
+      -l job-name=pg-bootstrap >&2 || true
+
+    kubectl -n "$K8S_NAMESPACE" logs job/pg-bootstrap \
+      --all-containers=true >&2 || true
+
+    kubectl -n "$K8S_NAMESPACE" get events \
+      --sort-by=.metadata.creationTimestamp |
+    tail -40 >&2 || true
+
+    # Il Secret temporaneo viene eliminato, ma Job e pod restano disponibili
+    # per la diagnosi. Non vengono pubblicate nuove password in Secrets Manager.
+    kubectl -n "$K8S_NAMESPACE" delete secret pg-bootstrap \
+      --ignore-not-found
+
+    unset app_pw
+    shred -u "$db_secret_file" "$config_secret_file" 2>/dev/null || true
+
+    if [ "$BFF_PEMS_ARE_TEMP" = "1" ]; then
+      shred -u "$BFF_KEY_PEM" "$BFF_CERT_PEM" 2>/dev/null || true
+    fi
+
+    die "Bootstrap PostgreSQL fallito: il secret applicativo non e' stato aggiornato."
+  fi
+
+  log "Bootstrap PostgreSQL completato."
+
+  kubectl -n "$K8S_NAMESPACE" logs job/pg-bootstrap \
+    --all-containers=true || true
+
+  # ---------------------------------------------------------------------------
+  # Preparazione dei secret applicativi
+  #
+  # Le applicazioni usano psycopg_pool, quindi il formato corretto è:
+  #   postgresql://...?sslmode=require
+  #
+  # Non usare:
+  #   postgresql+asyncpg://...?ssl=require
+  # ---------------------------------------------------------------------------
+  jq -n \
+    --arg url "postgresql://helios_app:${app_pw}@${DB_HOST}/${DB_NAME}?sslmode=require" \
+    '{DATABASE_URL:$url}' \
+    > "$db_secret_file"
+
+  jq -n \
+    --arg key "$(
+      python3 -c \
+        'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+    )" \
+    --rawfile pk "$BFF_KEY_PEM" \
+    --rawfile cert "$BFF_CERT_PEM" \
+    '{
+      OIDC_CLIENT_PRIVATE_KEY: $pk,
+      OIDC_CLIENT_CERTIFICATE: $cert,
+      SESSION_ENCRYPTION_KEY: $key
+    }' \
+    > "$config_secret_file"
+
+  # ---------------------------------------------------------------------------
+  # Pubblicazione in AWS Secrets Manager
+  #
+  # Viene eseguita soltanto dopo il successo del Job, così la password nel
+  # database e quella pubblicata ai workload restano allineate.
+  # ---------------------------------------------------------------------------
+  aws secretsmanager put-secret-value \
+    --secret-id "${PREFIX}/application/database" \
+    --secret-string "file://${db_secret_file}" \
+    >/dev/null
+
+  aws secretsmanager put-secret-value \
+    --secret-id "${PREFIX}/application/config" \
+    --secret-string "file://${config_secret_file}" \
+    >/dev/null
+
+  # ---------------------------------------------------------------------------
+  # Cleanup dei dati sensibili e delle risorse temporanee
+  # ---------------------------------------------------------------------------
+  unset app_pw
+
+  shred -u "$db_secret_file" "$config_secret_file"
+
+  kubectl -n "$K8S_NAMESPACE" delete secret pg-bootstrap \
+    --ignore-not-found
+
+  kubectl -n "$K8S_NAMESPACE" delete job pg-bootstrap \
+    --ignore-not-found \
+    --wait=true
+
+  # I PEM estratti dal PFX sono temporanei. I PEM forniti direttamente
+  # dall'operatore non vengono eliminati.
+  if [ "$BFF_PEMS_ARE_TEMP" = "1" ]; then
+    shred -u "$BFF_KEY_PEM" "$BFF_CERT_PEM" 2>/dev/null || true
+  fi
+
+  log "Utente helios_app aggiornato e secret applicativi popolati."
 }
 
 # =============================================================================
@@ -1196,7 +1466,7 @@ s14_images() {
   # checkout git (file copiati senza .git): in quel caso `git rev-parse` fallisce
   # e senza fallback IMAGE_TAG resterebbe vuoto, producendo un tag docker rotto
   # (".../reverse-dr-poc-bff:" -> invalid reference format).
-  local tag="${IMAGE_TAG:-}"
+  local tag="${IMAGE_TAG:-1.1}"
   [ -n "$tag" ] || tag="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || true)"
   [ -n "$tag" ] || tag="manual-$(date -u +%Y%m%d%H%M%S)"
   [ -n "$tag" ] || die "Impossibile determinare IMAGE_TAG."
@@ -1414,8 +1684,9 @@ s17_migrations() {
   _ensure_kubeconfig
   # Le immagini non migrano all'avvio (scelta deliberata). apply-migrations.sh
   # ha DB_SECRET hardcoded al nome on-prem: su AWS il secret e' helios-bff-database.
-  DB_SECRET=helios-bff-database bash "${REPO_ROOT}/automazione/infra/onprem/scripts/apply-migrations.sh" \
-    || warn "Se lo script non accetta l'override DB_SECRET, replica il Job a mano (vedi §17)."
+  DB_SECRET=helios-bff-database \
+    bash "${REPO_ROOT}/automazione/infra/onprem/scripts/apply-migrations.sh" \
+    || die "Migrazioni database fallite: non riavvio i deployment."
   kubectl -n "$K8S_NAMESPACE" rollout restart deploy/helios-bff deploy/helios-ticket-service deploy/helios-automation-service
   kubectl -n "$K8S_NAMESPACE" rollout status deploy/helios-bff
   log "Migrazioni applicate."

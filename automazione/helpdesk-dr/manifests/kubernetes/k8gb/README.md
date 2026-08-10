@@ -11,13 +11,13 @@ La logica operativa resta nel DR controller:
 1. controlla `/health/ready` sul primario;
 2. quando il primario supera la soglia di errore, `ansible-node` esegue `scripts/failover/run-ansible-failover.sh`;
 3. il playbook ripristina il database, promuove on-prem e abilita la readiness;
-4. K8GB vede on-prem ready e puo risolvere `heliospoc.ggg.it` verso il sito DR.
+4. K8GB vede on-prem ready e puo risolvere `heliospoc.terna.it` verso il sito DR.
 
 ## Prerequisiti
 
 - K8GB installato su entrambi i cluster.
 - `geoTag` coerenti con `cloud` e `onprem`.
-- zona host-specific `heliospoc.ggg.it` delegata a K8GB oppure provider
+- zona host-specific `heliospoc.terna.it` delegata a K8GB oppure provider
   supportato, senza cedere a questa PoC l'intera zona `ggg.it`.
 - Ingress class coerente con il cluster. Nel lab k3s e Traefik usano `traefik`.
 

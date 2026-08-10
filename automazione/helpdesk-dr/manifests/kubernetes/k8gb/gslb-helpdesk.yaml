@@ -4,14 +4,14 @@ metadata:
   name: helpdesk
   namespace: helios-desk
 spec:
-  dnsZone: heliospoc.ggg.it
+  dnsZone: heliospoc.terna.it
   strategy:
     type: failover
     primaryGeoTag: cloud
   ingress:
     ingressClassName: traefik
     rules:
-      - host: heliospoc.ggg.it
+      - host: heliospoc.terna.it
         http:
           paths:
             - path: /api

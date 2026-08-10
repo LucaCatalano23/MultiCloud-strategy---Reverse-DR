@@ -174,7 +174,7 @@ un'eventuale connessione diretta per IP al nodo.
 openssl req -x509 -newkey rsa:4096 -sha256 -days 825 -nodes \
   -keyout ~/azienda-lan.key -out ~/azienda-lan.crt \
   -subj "/CN=azienda.lan" \
-  -addext "subjectAltName=DNS:heliospoc.ggg.it,DNS:auth.azienda.lan,DNS:vault.azienda.lan,DNS:localhost,IP:127.0.0.1,IP:10.10.3.80"
+  -addext "subjectAltName=DNS:heliospoc.terna.it,DNS:auth.azienda.lan,DNS:vault.azienda.lan,DNS:localhost,IP:127.0.0.1,IP:10.10.3.80"
 ```
 
 ## 5. Immagini applicative Helios
@@ -270,7 +270,7 @@ lxc exec vault-openbao -- env BAO_ADDR=https://127.0.0.1:8200 \
 Configura mount KV, policy e autenticazione Kubernetes:
 
 ```bash
-export BAO_TOKEN=<root token da `bao operator init`, NON committarlo nel repo>
+export BAO_TOKEN=s.TV5ykQSOPvVZXHsbOTerVhsb
 export OPENBAO_CA_FILE=~/azienda-lan.crt
 bash automazione/infra/vault/scripts/configure-openbao.sh
 ```
@@ -332,7 +332,7 @@ Auto-unseal (opt-in esplicito: hai scelto di attivarlo). Colloca le chiavi sul
 nodo — compromesso dichiarato in `infra/vault/README.md`:
 
 ```bash
-export OPENBAO_UNSEAL_KEYS="gbf9xTZ0kMQWPviUC2hopq2fGU+7rfhYTsP6sCp+A4jb 5Z3cUM5FFROv6CN0jJwD3AxuSLZpenzJeUZgXop6rNpJ Z58hQQGNiEw+6jhy4v3FI532ypFfQ5L8DEKBBrDkbeTR"
+export OPENBAO_UNSEAL_KEYS="m+AzwyRjz77W4dkY7qkw+bvPuENwZsDffeLMj8yCDgaA pa2idEXcjVzcXH3SD0vSbrz/M09h7OJrZE/mdMgMjywL rPYnEY2qDUtFF/8TFicMK6hx1HcS8pBgz02tekt6OszI"
 export OPENBAO_ACCEPT_AUTO_UNSEAL_RISK=yes
 bash automazione/infra/vault/scripts/enable-auto-unseal.sh
 ```
@@ -496,7 +496,7 @@ lxc exec ansible-node -- journalctl -u helpdesk-dr-controller.service -n 50 --no
 ```
 
 In modalita' `https` il probe connette direttamente all'ALB mantenendo
-`heliospoc.ggg.it` come Host e TLS SNI, e gli IP *risolti* dall'ALB non vanno
+`heliospoc.terna.it` come Host e TLS SNI, e gli IP *risolti* dall'ALB non vanno
 mai salvati. In modalita' `http` (senza ACM) l'IP dell'ALB e' invece impostato
 di proposito in `CLOUD_TARGET_HOST` e va aggiornato quando cambia.
 
@@ -504,7 +504,7 @@ di proposito in `CLOUD_TARGET_HOST` e va aggiornato quando cambia.
 
 ## Verifica: vedere l'applicazione
 
-In modalità normale il DNS punta `heliospoc.ggg.it` al sito primario (AWS,
+In modalità normale il DNS punta `heliospoc.terna.it` al sito primario (AWS,
 fuori dal lab): in laboratorio non c'è quindi un'app da interrogare a riposo. Il
 modo per **vedere Helios in funzione nel lab è promuoverlo** con il drill: la
 promozione scala i workload da zero, sposta il DNS e rende il sito DR attivo.
@@ -562,10 +562,10 @@ L'endpoint `/dr-status` del monolite non esiste più: il sito attivo si legge da
 
 ### Aprire la dashboard nel browser dell'host
 
-L'host Windows non è nel lab e non usa `server-dns`, quindi `heliospoc.ggg.it`
+L'host Windows non è nel lab e non usa `server-dns`, quindi `heliospoc.terna.it`
 non risolve e gli IP `10.10.3.x` (dentro WSL2+LXD) non sono raggiungibili dal
 browser. La dashboard usa cookie `__Host-*` e callback OIDC legati a
-`https://heliospoc.ggg.it`, quindi non si può usare `localhost` o un IP nudo:
+`https://heliospoc.terna.it`, quindi non si può usare `localhost` o un IP nudo:
 serve proprio quell'hostname sulla porta 443. Si instrada verso l'ingress Traefik
 con un port-forward.
 
@@ -603,7 +603,7 @@ altrimenti l'ingress risponde 503.
    letto al passo 1. Per generare la riga esatta da incollare, da WSL:
 
    ```bash
-   echo "$(hostname -I | awk '{print $1}') heliospoc.ggg.it auth.azienda.lan"
+   echo "$(hostname -I | awk '{print $1}') heliospoc.terna.it auth.azienda.lan"
    ```
 
    Puoi aggiornarlo in modo idempotente da un **PowerShell come amministratore**
@@ -614,10 +614,10 @@ altrimenti l'ingress risponde 503.
    $wslIp = (wsl -e bash -lc "hostname -I | awk '{print `$1}'").Trim()
    $hosts = "$env:windir\System32\drivers\etc\hosts"
    $keep  = Get-Content $hosts | Where-Object { $_ -notmatch 'heliospoc\.ggg\.it|auth\.azienda\.lan' }
-   ($keep + "$wslIp heliospoc.ggg.it auth.azienda.lan") | Set-Content $hosts -Encoding ascii
+   ($keep + "$wslIp heliospoc.terna.it auth.azienda.lan") | Set-Content $hosts -Encoding ascii
    ```
 
-4. Browser Windows → `https://heliospoc.ggg.it` → accetta il certificato
+4. Browser Windows → `https://heliospoc.terna.it` → accetta il certificato
    self-signed → login Keycloak (stesso port-forward, Traefik smista per Host) con
    l'operatore DR. La porta **deve** restare 443: il `redirect_uri` OIDC è senza
    porta, quindi un 8443 romperebbe il login.
@@ -626,7 +626,7 @@ Se il browser non raggiunge l'IP di WSL, verifica che il port-forward sia su
 `--address 0.0.0.0` (non `127.0.0.1`) e che l'IP nel file hosts sia quello **attuale**
 di eth0 (passo 1). In alternativa, per una verifica rapida senza browser, da
 `pc-dipendente1` (che usa il DNS del lab):
-`curl -sk https://heliospoc.ggg.it/api/v1/session`.
+`curl -sk https://heliospoc.terna.it/api/v1/session`.
 
 ### Senza permessi di amministratore su Windows
 
@@ -637,9 +637,9 @@ che **non** richiedono privilegi:
   l'admin di Windows) e WSL raggiunge il lab **direttamente** su `10.10.3.10`:
   niente port-forward, niente hosts di Windows.
   ```bash
-  echo "10.10.3.10 heliospoc.ggg.it auth.azienda.lan" | sudo tee -a /etc/hosts
+  echo "10.10.3.10 heliospoc.terna.it auth.azienda.lan" | sudo tee -a /etc/hosts
   sudo apt update && sudo apt install -y firefox-esr
-  firefox https://heliospoc.ggg.it >/dev/null 2>&1 &
+  firefox https://heliospoc.terna.it >/dev/null 2>&1 &
   ```
 
 - **Chrome/Edge di Windows con `--host-resolver-rules`** (flag per-utente, nessuna
@@ -647,7 +647,7 @@ che **non** richiedono privilegi:
   passo 1; sostituisci `IP_WSL`. Il `--user-data-dir` temporaneo evita che i flag
   vengano ignorati se il browser è già aperto e non tocca il profilo aziendale:
   ```text
-  chrome.exe --user-data-dir="%TEMP%\helios" --host-resolver-rules="MAP heliospoc.ggg.it IP_WSL, MAP auth.azienda.lan IP_WSL" https://heliospoc.ggg.it
+  chrome.exe --user-data-dir="%TEMP%\helios" --host-resolver-rules="MAP heliospoc.terna.it IP_WSL, MAP auth.azienda.lan IP_WSL" https://heliospoc.terna.it
   ```
 
 ---

@@ -38,7 +38,7 @@ configMapGenerator:
       - SITE_MODE=dr
       - SITE_NAME=on-prem
       - IDENTITY_PROVIDER=keycloak
-      - APPLICATION_PUBLIC_ORIGIN=https://heliospoc.ggg.it
+      - APPLICATION_PUBLIC_ORIGIN=https://heliospoc.terna.it
       - OIDC_ISSUER_URL=https://auth.azienda.lan/realms/helios-desk
       - OIDC_AUDIENCE=api://reverse-dr-helpdesk
       - OIDC_JWKS_URL=http://keycloak.helios-identity.svc.cluster.local:8080/realms/helios-desk/protocol/openid-connect/certs
@@ -54,8 +54,8 @@ configMapGenerator:
       - OIDC_SCOPES=openid profile email
       - OIDC_CLIENT_ID=helios-bff
       - OIDC_CLIENT_AUTH_METHOD=client_secret
-      - OIDC_REDIRECT_URI=https://heliospoc.ggg.it/api/v1/auth/callback
-      - OIDC_POST_LOGOUT_REDIRECT_URI=https://heliospoc.ggg.it/
+      - OIDC_REDIRECT_URI=https://heliospoc.terna.it/api/v1/auth/callback
+      - OIDC_POST_LOGOUT_REDIRECT_URI=https://heliospoc.terna.it/
       - OIDC_AUTHORIZATION_ENDPOINT=https://auth.azienda.lan/realms/helios-desk/protocol/openid-connect/auth
       - OIDC_TOKEN_ENDPOINT=http://keycloak.helios-identity.svc.cluster.local:8080/realms/helios-desk/protocol/openid-connect/token
       - OIDC_END_SESSION_ENDPOINT=https://auth.azienda.lan/realms/helios-desk/protocol/openid-connect/logout

@@ -1,8 +1,8 @@
 LAB_DOMAIN="azienda.lan"
-HELPDESK_FQDN="heliospoc.ggg.it"
+HELPDESK_FQDN="heliospoc.terna.it"
 # Zona host-specific split-horizon del lab: non rende BIND autorevole per tutta
 # ggg.it e permette di spostare lo stesso FQDN fra cloud e on-prem.
-HELPDESK_DNS_ZONE="heliospoc.ggg.it"
+HELPDESK_DNS_ZONE="heliospoc.terna.it"
 
 CLOUD_NET="cloud-net"
 CLOUD_NET_CIDR="10.20.0.1/24"

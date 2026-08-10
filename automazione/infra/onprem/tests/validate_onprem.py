@@ -101,7 +101,7 @@ class OnPremManifestContractTest(unittest.TestCase):
 
     def test_identity_and_application_ingress_are_separated(self) -> None:
         self.assertIn("host: auth.azienda.lan", self.rendered)
-        self.assertIn("host: heliospoc.ggg.it", self.rendered)
+        self.assertIn("host: heliospoc.terna.it", self.rendered)
         self.assertIn("name: helios-bff", self.rendered)
         self.assertIn("name: helios-web", self.rendered)
         self.assertIn("path: /api", self.rendered)
@@ -110,15 +110,15 @@ class OnPremManifestContractTest(unittest.TestCase):
     def test_keycloak_redirects_back_to_the_canonical_application_origin(self) -> None:
         bff = self._deployment_document("helios-bff")
         self.assertIn(
-            "OIDC_REDIRECT_URI: https://heliospoc.ggg.it/api/v1/auth/callback",
+            "OIDC_REDIRECT_URI: https://heliospoc.terna.it/api/v1/auth/callback",
             self.rendered,
         )
         self.assertIn(
-            "OIDC_POST_LOGOUT_REDIRECT_URI: https://heliospoc.ggg.it/",
+            "OIDC_POST_LOGOUT_REDIRECT_URI: https://heliospoc.terna.it/",
             self.rendered,
         )
         self.assertIn(
-            "APPLICATION_PUBLIC_ORIGIN: https://heliospoc.ggg.it",
+            "APPLICATION_PUBLIC_ORIGIN: https://heliospoc.terna.it",
             self.rendered,
         )
         self.assertIn("APPLICATION_PUBLIC_ORIGIN", bff)
@@ -215,12 +215,12 @@ class RealmContractTest(unittest.TestCase):
             if client["clientId"] == "helios-bff"
         )
         self.assertEqual(
-            ["https://heliospoc.ggg.it/api/v1/auth/callback"],
+            ["https://heliospoc.terna.it/api/v1/auth/callback"],
             bff["redirectUris"],
         )
-        self.assertEqual(["https://heliospoc.ggg.it"], bff["webOrigins"])
+        self.assertEqual(["https://heliospoc.terna.it"], bff["webOrigins"])
         self.assertEqual(
-            "https://heliospoc.ggg.it/",
+            "https://heliospoc.terna.it/",
             bff["attributes"]["post.logout.redirect.uris"],
         )
 

@@ -13,7 +13,7 @@ Questo modulo simula un disaster recovery inverso cloud -> on-premise.
 - `cloud-k3s`: macchina esterna alla rete aziendale LXC, sempre dentro WSL/LXD. Ospita il cluster Kubernetes primario. Dopo la rimozione del monolite non vi gira più alcuna applicazione: resta come **failure domain** che il drill spegne.
 - `k3s-datacenter`: nodo on-prem nella rete aziendale LXC. Ospita il cluster Kubernetes di DR e i workload Helios.
 - `git-server`: punto di verita per applicativo, manifest e runbook.
-- `server-dns`: DNS split-horizon del lab. In stato normale punta `heliospoc.ggg.it` al cloud; in DR lo punta on-prem.
+- `server-dns`: DNS split-horizon del lab. In stato normale punta `heliospoc.terna.it` al cloud; in DR lo punta on-prem.
 - `ansible-node`: orchestratore operativo per backup, restore e cutover.
 
 ## Architettura
@@ -29,8 +29,8 @@ on-prem k3s-datacenter
   postgres applicativo restored from backup (namespace helpdesk, database helios)
 
 server-dns
-  heliospoc.ggg.it -> cloud ingress, normal mode
-  heliospoc.ggg.it -> on-prem ingress, DR mode
+  heliospoc.terna.it -> cloud ingress, normal mode
+  heliospoc.terna.it -> on-prem ingress, DR mode
 
 dr-controller
   osserva il data plane primario
@@ -161,9 +161,9 @@ DR_AUTO_FAILOVER_ENABLED=true
 ```
 
 Il controller usa `curl --connect-to`: apre la connessione verso il DNS name
-dell'ALB, ma conserva `heliospoc.ggg.it` come Host e TLS SNI. Cosi' il probe
+dell'ALB, ma conserva `heliospoc.terna.it` come Host e TLS SNI. Cosi' il probe
 continua a osservare direttamente AWS anche quando il DNS canonico punta gia'
-al DR. Per il traffico utente configura `heliospoc.ggg.it` come CNAME verso
+al DR. Per il traffico utente configura `heliospoc.terna.it` come CNAME verso
 l'ALB se e' un record nella zona padre `ggg.it`, oppure come Route 53 Alias A;
 non configurare mai un A record con gli IP correnti dell'ALB.
 
@@ -186,8 +186,8 @@ Il cert self-signed non e' nel trust store, quindi la verifica va rilassata:
 `CLOUD_TARGET_CA_FILE` fissa quel cert come CA da fidare (piu' severo, richiede
 di distribuirlo ad `ansible-node`), oppure `CLOUD_TARGET_INSECURE=true` salta la
 verifica (piu' semplice). Sono mutuamente esclusivi. Con `--cacert` il SAN del
-cert deve includere `heliospoc.ggg.it`. Anche qui il probe usa `--connect-to`
-verso l'IP tenendo `heliospoc.ggg.it` come Host/SNI. L'IP dell'ALB e' dinamico e
+cert deve includere `heliospoc.terna.it`. Anche qui il probe usa `--connect-to`
+verso l'IP tenendo `heliospoc.terna.it` come Host/SNI. L'IP dell'ALB e' dinamico e
 va aggiornato a mano quando cambia.
 
 ### Ultima spiaggia: probe HTTP puro (nessun cert sull'ALB)
@@ -203,7 +203,7 @@ DR_AUTO_FAILOVER_ENABLED=true
 ```
 
 Come in `https`, il probe usa `curl --connect-to`: apre la connessione verso
-l'IP indicato ma conserva `heliospoc.ggg.it` come Host, cosi' la regola
+l'IP indicato ma conserva `heliospoc.terna.it` come Host, cosi' la regola
 host-based dell'Ingress instrada comunque verso `helios-bff`.
 
 Limiti dichiarati di questa modalita', accettati consapevolmente:

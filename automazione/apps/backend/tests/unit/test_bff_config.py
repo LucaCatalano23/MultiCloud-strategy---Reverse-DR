@@ -5,7 +5,7 @@ from pydantic import ValidationError
 
 from helios_bff.config import BffSettings
 
-CANONICAL_ORIGIN = "https://heliospoc.ggg.it"
+CANONICAL_ORIGIN = "https://heliospoc.terna.it"
 
 
 def _base_settings(**overrides: object) -> Mapping[str, object]:
@@ -189,8 +189,8 @@ def test_keycloak_rejects_non_allowlisted_internal_trust_endpoints(
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("application_public_origin", "http://heliospoc.ggg.it"),
-        ("application_public_origin", "https://heliospoc.ggg.it/app"),
+        ("application_public_origin", "http://heliospoc.terna.it"),
+        ("application_public_origin", "https://heliospoc.terna.it/app"),
         ("oidc_redirect_uri", "https://evil.example/api/v1/auth/callback"),
         ("oidc_post_logout_redirect_uri", "https://evil.example/"),
         ("oidc_end_session_endpoint", "https://evil.example/logout"),

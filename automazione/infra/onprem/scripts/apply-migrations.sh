@@ -15,7 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_SERVICES_DIR="$(cd "${SCRIPT_DIR}/../../../apps/backend/services" && pwd)"
 KUBECTL_BIN="${KUBECTL:-kubectl}"
 NAMESPACE="helios-desk"
-DB_SECRET="helios-app-database"
+DB_SECRET="${DB_SECRET:-helios-app-database}"
 MIGRATIONS_CONFIGMAP="helios-db-migrations"
 MIGRATE_JOB="helios-db-migrate"
 PSQL_IMAGE="${PSQL_IMAGE:-postgres:16-alpine}"
@@ -75,11 +75,21 @@ spec:
       restartPolicy: Never
       securityContext:
         runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
         runAsUser: 65534
         runAsGroup: 65534
       containers:
         - name: migrate
           image: ${PSQL_IMAGE}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
           command: ["/bin/sh", "-c"]
           args:
             - |

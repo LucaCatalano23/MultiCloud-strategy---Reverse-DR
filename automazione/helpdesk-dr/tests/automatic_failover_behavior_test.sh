@@ -46,9 +46,9 @@ curl() {
 cloud_ready_https
 grep -Fx -- '--connect-to' "${capture_file}" >/dev/null
 grep -Fx -- \
-  'heliospoc.ggg.it:443:k8s-helios-test.eu-west-1.elb.amazonaws.com:443' \
+  'heliospoc.terna.it:443:k8s-helios-test.eu-west-1.elb.amazonaws.com:443' \
   "${capture_file}" >/dev/null
-grep -Fx -- 'https://heliospoc.ggg.it/health/ready' "${capture_file}" >/dev/null
+grep -Fx -- 'https://heliospoc.terna.it/health/ready' "${capture_file}" >/dev/null
 # Con un cert fidato il probe non deve rilassare la verifica TLS.
 if grep -Fxq -- '--insecure' "${capture_file}" || grep -Fxq -- '--cacert' "${capture_file}"; then
   echo 'Strict https probe must not relax TLS verification.' >&2
@@ -100,8 +100,8 @@ CLOUD_TARGET_HOST=203.0.113.10
 CLOUD_TARGET_PORT=80
 cloud_ready_http
 grep -Fx -- '--connect-to' "${capture_file}" >/dev/null
-grep -Fx -- 'heliospoc.ggg.it:80:203.0.113.10:80' "${capture_file}" >/dev/null
-grep -Fx -- 'http://heliospoc.ggg.it/health/ready' "${capture_file}" >/dev/null
+grep -Fx -- 'heliospoc.terna.it:80:203.0.113.10:80' "${capture_file}" >/dev/null
+grep -Fx -- 'http://heliospoc.terna.it/health/ready' "${capture_file}" >/dev/null
 
 # Ripristina lo scenario https per i controlli di validazione seguenti.
 CLOUD_PROBE_MODE=https

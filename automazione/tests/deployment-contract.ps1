@@ -10,7 +10,7 @@ if ($contract.schemaVersion -ne 1) {
 if ($contract.application.publicApiBasePath -ne '/api/v1') {
     throw 'The public API base path must stay /api/v1.'
 }
-$canonicalHost = 'heliospoc.ggg.it'
+$canonicalHost = 'heliospoc.terna.it'
 $canonicalOrigin = "https://$canonicalHost"
 if ($contract.application.canonicalHost -ne $canonicalHost) {
     throw "The application must use the canonical host $canonicalHost on every site."
@@ -65,7 +65,7 @@ if ($cloudConfig -notmatch [regex]::Escape('OIDC_CLIENT_AUTH_METHOD: private_key
 
 $provisionCli = Get-Content -LiteralPath (
     Join-Path $automazioneRoot 'infra/aws/provision-cli/provision.sh') -Raw
-if ($provisionCli -notmatch [regex]::Escape('CANONICAL_APP_HOST="heliospoc.ggg.it"')) {
+if ($provisionCli -notmatch [regex]::Escape('CANONICAL_APP_HOST="heliospoc.terna.it"')) {
     throw 'The AWS provision CLI must pin the cloud deployment to the canonical host.'
 }
 if ($provisionCli -notmatch [regex]::Escape('require_canonical_app_host')) {
