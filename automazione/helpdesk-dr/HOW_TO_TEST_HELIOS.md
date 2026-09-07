@@ -73,24 +73,6 @@ printf 'ALB: %s\n' "$ALB_DNS"
 test -n "$ALB_DNS"
 ```
 
-Per il failover DNS automatico del laboratorio, aggiungi lo stesso valore al
-file `automazione/helpdesk-dr/config.env` dell'orchestratore DR:
-
-```bash
-CLOUD_PROBE_MODE=https
-CLOUD_TARGET_HOST=<valore di ALB_DNS>
-CLOUD_DNS_TARGET=<valore di ALB_DNS>
-DR_AUTO_FAILOVER_ENABLED=true
-```
-
-Il controller verifica il primario direttamente contro `CLOUD_TARGET_HOST`,
-quindi continua a controllare AWS anche quando Bind ha spostato
-`heliospoc.terna.it` sul DR. `CLOUD_DNS_TARGET` viene pubblicato come CNAME di
-`heliospoc` nella zona `terna.it` nello stato `primary`; durante il DR diventa
-un A record verso k3s.
-Per fare usare il DNS del lab all'host WSL: `sudo bash
-automazione/lxc-lab/host-dns.sh enable`.
-
 Verificare la readiness del BFF cloud senza dipendere dal DNS del lab. Il
 comando conserva hostname e SNI `heliospoc.terna.it`, ma apre la connessione
 direttamente verso l'ALB:
@@ -332,25 +314,68 @@ ALB. Non usarlo per il cutback AWS.
 
 ### 7.2 Ripubblicare il cloud nel DNS del lab
 
-Il DNS primario deve restituire un CNAME verso l'ALB, senza rendere Bind
-autorevole per tutta `terna.it`: ciò romperebbe host aziendali come
-`sts.terna.it`, usato nel redirect Entra ID. Il controller usa una **Response
-Policy Zone (RPZ)**, che intercetta esclusivamente `heliospoc.terna.it`.
+Il DNS primario deve essere un CNAME verso l'ALB, non un record A verso un suo
+IP. Il CNAME vive nella zona padre `terna.it`; una zona più specifica
+`heliospoc.terna.it`, creata dal DR, la sovrascrive e va quindi rimossa dalla
+configurazione di Bind prima del rientro.
 
-Non modificare manualmente `named.conf.local` né creare una zona `terna.it`.
-Con `CLOUD_DNS_TARGET` configurato, il cutback applica il record RPZ corretto:
+Accedere a Bind e rimuovere **solo** il blocco seguente da
+`/etc/bind/named.conf.local`:
+
+```conf
+zone "heliospoc.terna.it" {
+  type master;
+  file "/etc/bind/db.heliospoc.terna.it";
+};
+```
+
+Prima dell'editing creare una copia di sicurezza e aprire il file nel
+container:
+
+```bash
+lxc exec server-dns -- cp /etc/bind/named.conf.local \
+  /etc/bind/named.conf.local.before-aws-cutback
+lxc exec server-dns -- vi /etc/bind/named.conf.local
+```
+
+Salvare il file dopo la rimozione del blocco. La rimozione è necessaria: Bind
+sceglie la zona più specifica `heliospoc.terna.it` creata dal DR, che altrimenti
+continuerebbe a prevalere sul CNAME nella zona padre `terna.it`.
+
+Se nello stesso file non esiste già una definizione per `terna.it`, aggiungere
+anche questo blocco prima di salvare:
+
+```conf
+zone "terna.it" {
+  type master;
+  file "/etc/bind/db.terna.it";
+};
+```
+
+Poi riscrivere la zona padre con un valore ALB non vuoto e ricaricare Bind:
 
 ```bash
 test -n "$ALB_DNS"
-bash automazione/helpdesk-dr/scripts/poc/ansible-run.sh failover/cutback-to-cloud
-resolvectl flush-caches
+cat >/tmp/db.terna.it <<EOF
+\$TTL 30
+@ IN SOA server-dns.azienda.lan. admin.azienda.lan. (
+  $(date +%s) 30 15 604800 30
+)
+@ IN NS server-dns.azienda.lan.
+heliospoc IN CNAME ${ALB_DNS}.
+EOF
+
+lxc file push /tmp/db.terna.it server-dns/etc/bind/db.terna.it
+lxc exec server-dns -- named-checkconf
+lxc exec server-dns -- named-checkzone terna.it /etc/bind/db.terna.it
+lxc exec server-dns -- systemctl reload named
 
 dig @10.10.2.53 heliospoc.terna.it CNAME +noall +answer
-dig @10.10.2.53 sts.terna.it A +short
+dig @10.10.2.53 heliospoc.terna.it A +noall +answer
 ```
 
-Procedere solo quando il primo comando mostra il CNAME dell'ALB e il secondo
-continua a risolvere tramite il DNS aziendale.
+Procedere solo quando la risposta mostra il CNAME dell'ALB e i suoi indirizzi
+risolti.
 
 ### 7.3 Demotare il DR e registrare il ritorno al primario
 

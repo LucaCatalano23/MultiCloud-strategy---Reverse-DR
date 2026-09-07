@@ -36,6 +36,8 @@ flowchart LR
   subgraph dc["lab-datacenter 10.10.3.0/24"]
     rdc["router-datacenter OpenWrt\neth0 10.10.3.1"]
     onpremk3s["k3s-datacenter\n10.10.3.10\nK3s DR on-prem"]
+    keycloak["proxy-keycloak\n10.10.3.50"]
+    egress["egress-proxy\n10.10.3.60"]
     git["git-server\n10.10.3.70\nbare repo helpdesk-dr.git"]
     vault["vault-openbao\n10.10.3.80\nOpenBao, segreti del sito DR"]
     ansible["ansible-node\n10.10.3.100\nAnsible + DR controller"]
@@ -62,6 +64,8 @@ flowchart LR
   git --> rdc
   vault --> rdc
   ansible --> rdc
+  keycloak --> rdc
+  egress --> rdc
   dns --> rdmz
 
   onpremk3s -. "External Secrets legge i segreti DR" .-> vault
@@ -95,6 +99,8 @@ flowchart LR
 | `server-dns` | Ubuntu | `eth0 10.10.2.53` | Bind9, zona lab `azienda.lan` e zona host-specific `heliospoc.terna.it` |
 | `pc-dipendente1` | Ubuntu client | `eth0 10.10.1.193` | client interno |
 | `k3s-datacenter` | Ubuntu + k3s | `eth0 10.10.3.10` | cluster Kubernetes on-prem DR |
+| `proxy-keycloak` | Ubuntu | `eth0 10.10.3.50` | nodo previsto per proxy/autenticazione |
+| `egress-proxy` | Ubuntu | `eth0 10.10.3.60` | nodo previsto per egress applicativo |
 | `git-server` | Ubuntu | `eth0 10.10.3.70` | repository bare `helpdesk-dr.git`, `git-daemon` |
 | `vault-openbao` | Ubuntu | `eth0 10.10.3.80` | OpenBao, vault manager dei segreti del sito DR |
 | `ansible-node` | Ubuntu | `eth0 10.10.3.100` | Ansible, runbook DR, controller DR |
