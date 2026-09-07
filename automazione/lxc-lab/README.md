@@ -7,11 +7,10 @@ Questa directory ricrea in LXD/LXC la topologia mostrata nella foto.
 | Container | Ruolo | Interfacce |
 | --- | --- | --- |
 | `ansible-node` | nodo di controllo con Ansible | `10.10.3.100/24` su datacenter |
-| `egress-proxy` | proxy di uscita | `10.10.3.60/24` su datacenter |
 | `git-server` | server Git reale con repo bare | `10.10.3.70/24` su datacenter |
 | `k3s-datacenter` | nodo datacenter | `10.10.3.10/24` su datacenter |
 | `pc-dipendente1` | client rete dipendenti | `10.10.1.193/24` su dipendenti |
-| `proxy-keycloak` | reverse proxy/app proxy | `10.10.3.50/24` su datacenter |
+| `vault-openbao` | Secret Vault OpenBao | `10.10.3.80/24` su datacenter |
 | `router-datacenter` | router OpenWrt | `10.10.3.1/24` su datacenter, `10.10.2.3/24` su DMZ |
 | `router-dipendenti` | router OpenWrt | `10.10.1.1/24` su dipendenti, `10.10.2.2/24` su DMZ |
 | `router-dmz` | router OpenWrt | `10.10.2.4/24` su DMZ, `10.10.4.1/24` su transit |

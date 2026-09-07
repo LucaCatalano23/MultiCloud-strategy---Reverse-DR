@@ -427,8 +427,6 @@ router-dmz IN A 10.10.4.1
 router-edge IN A 10.10.4.2
 pc-dipendente1 IN A 10.10.1.193
 k3s-datacenter IN A 10.10.3.10
-proxy-keycloak IN A 10.10.3.50
-egress-proxy IN A 10.10.3.60
 vault-openbao IN A 10.10.3.80
 vault IN A 10.10.3.80
 git-server IN A 10.10.3.70
@@ -475,8 +473,6 @@ configure_ansible_node() {
   lxc_retry exec ansible-node -- bash -lc "cat >/etc/ansible/hosts" <<EOF
 [datacenter]
 k3s-datacenter ansible_host=10.10.3.10
-proxy-keycloak ansible_host=10.10.3.50
-egress-proxy ansible_host=10.10.3.60
 vault-openbao ansible_host=10.10.3.80
 git-server ansible_host=10.10.3.70
 
@@ -494,8 +490,6 @@ EOF
 configure_basic_ubuntu_nodes() {
   local nodes=(
     "k3s-datacenter 10.10.3.1"
-    "proxy-keycloak 10.10.3.1"
-    "egress-proxy 10.10.3.1"
     "vault-openbao 10.10.3.1"
     "pc-dipendente1 10.10.1.1"
   )
@@ -511,7 +505,7 @@ configure_basic_ubuntu_nodes() {
 }
 
 remove_all_provisioning_nics() {
-  local nodes=(ansible-node egress-proxy git-server k3s-datacenter pc-dipendente1 proxy-keycloak server-dns vault-openbao)
+  local nodes=(ansible-node git-server k3s-datacenter pc-dipendente1 server-dns vault-openbao)
   local node
   for node in "${nodes[@]}"; do
     remove_provisioning_nic "${node}"
@@ -834,11 +828,6 @@ main() {
   attach_nic ansible-node "${NET_DATACENTER}" eth0 10.10.3.100
   attach_provisioning_nic ansible-node
 
-  init_container egress-proxy "${UBUNTU_IMAGE}"
-  configure_container_runtime egress-proxy ubuntu-service
-  attach_nic egress-proxy "${NET_DATACENTER}" eth0 10.10.3.60
-  attach_provisioning_nic egress-proxy
-
   init_container git-server "${UBUNTU_IMAGE}"
   configure_container_runtime git-server ubuntu-service
   attach_nic git-server "${NET_DATACENTER}" eth0 10.10.3.70
@@ -853,11 +842,6 @@ main() {
   configure_container_runtime pc-dipendente1 ubuntu-service
   attach_nic pc-dipendente1 "${NET_DIPENDENTI}" eth0 10.10.1.193
   attach_provisioning_nic pc-dipendente1
-
-  init_container proxy-keycloak "${UBUNTU_IMAGE}"
-  configure_container_runtime proxy-keycloak ubuntu-service
-  attach_nic proxy-keycloak "${NET_DATACENTER}" eth0 10.10.3.50
-  attach_provisioning_nic proxy-keycloak
 
   # OpenBao custodisce i segreti del sito DR: come il coordinatore DR deve
   # ripartire da solo dopo un riavvio di LXD/WSL, altrimenti al momento del
@@ -894,7 +878,7 @@ main() {
 
   for container in \
     router-dipendenti router-datacenter router-dmz router-edge \
-    ansible-node egress-proxy git-server k3s-datacenter pc-dipendente1 proxy-keycloak server-dns \
+    ansible-node git-server k3s-datacenter pc-dipendente1 server-dns \
     vault-openbao; do
     ensure_started "${container}"
   done

@@ -21,16 +21,15 @@ lxc_retry() {
 
 containers=(
   ansible-node
-  egress-proxy
   git-server
   k3s-datacenter
   pc-dipendente1
-  proxy-keycloak
   router-datacenter
   router-dipendenti
   router-dmz
   router-edge
   server-dns
+  vault-openbao
 )
 
 echo "== LXD =="

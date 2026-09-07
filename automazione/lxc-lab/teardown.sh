@@ -26,11 +26,9 @@ lxc_retry() {
 
 containers=(
   ansible-node
-  egress-proxy
   git-server
   k3s-datacenter
   pc-dipendente1
-  proxy-keycloak
   router-datacenter
   router-dipendenti
   router-dmz
