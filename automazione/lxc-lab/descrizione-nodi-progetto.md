@@ -233,7 +233,7 @@ Ha due interfacce:
 
 La sua funzione e collegare i nodi del datacenter on-prem alla DMZ.
 
-I nodi `k3s-datacenter`, `git-server`, `ansible-node` e `vault-openbao` usano questo router come gateway logico per comunicare con le altre reti aziendali e con l'esterno.
+I nodi `k3s-datacenter`, `git-server`, `ansible-node`, `egress-proxy` e `proxy-keycloak` usano questo router come gateway logico per comunicare con le altre reti aziendali e con l'esterno.
 
 ## `router-dmz`
 
@@ -269,6 +269,45 @@ eth1 su rete esterna/LXD, con indirizzo DHCP
 La sua funzione e permettere comunicazioni in uscita dalla rete aziendale verso l'esterno. Implementa NAT outbound.
 
 La scelta progettuale e importante: il traffico deve uscire dall'azienda verso Internet/cloud, ma non deve entrare dall'esterno verso la rete aziendale. Questo rappresenta un comportamento realistico per molte reti aziendali: gli host interni possono raggiungere servizi esterni, ma l'esposizione inbound e limitata o assente.
+
+## `egress-proxy`
+
+`egress-proxy` e un nodo Ubuntu previsto per controllare o filtrare traffico in uscita dal datacenter.
+
+Il suo indirizzo e:
+
+```text
+10.10.3.60
+```
+
+Nel progetto attuale non e ancora il componente centrale del flusso helpdesk, ma rappresenta un punto naturale dove introdurre:
+
+- proxy HTTP/HTTPS;
+- logging del traffico uscente;
+- allowlist di destinazioni;
+- policy di sicurezza per l'egress.
+
+In un'evoluzione della PoC, i workload on-prem potrebbero uscire verso cloud o repository passando da questo nodo.
+
+## `proxy-keycloak`
+
+`proxy-keycloak` e un nodo Ubuntu previsto per la componente di autenticazione o reverse proxy applicativo.
+
+Il suo indirizzo e:
+
+```text
+10.10.3.50
+```
+
+Nel progetto attuale non e ancora integrato nel flusso principale dell'helpdesk, ma rappresenta il punto in cui introdurre:
+
+- Keycloak;
+- reverse proxy;
+- autenticazione centralizzata;
+- integrazione OIDC/SAML;
+- protezione degli endpoint applicativi.
+
+Nella generazione corrente questo ruolo e' svolto da Keycloak dentro il cluster on-prem (namespace `helios-identity`): il BFF valida i token e il browser non riceve mai un access token.
 
 ## `vault-openbao`
 

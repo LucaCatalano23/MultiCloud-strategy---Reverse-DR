@@ -32,10 +32,10 @@ Questo runbook porta la PoC **da un PC nuovo a un sito DR completo in standby**,
 poi al drill di failover. È lungo di proposito: ogni passo che negli script non
 esiste ancora è esplicitato come comando.
 
-L'unica applicazione è Helios
+**Monolite `helpdesk-api` rimosso.** L'unica applicazione è Helios
 (`automazione/apps`, `automazione/infra/onprem`); il sito primario reale è AWS
 EKS (`automazione/infra/aws`). `cloud-k3s` resta solo come dominio di guasto che
-il drill spegne.
+il drill spegne. LocalStack e il monolite non esistono più.
 
 **Segreti: stesso contratto, provider diverso per sito.** Sul primario AWS
 Secrets Manager, sul DR OpenBao sul nodo `vault-openbao`; su entrambi i Secret
@@ -302,9 +302,9 @@ export HELIOS_DR_OPERATOR_PASSWORD="$(python3 -c 'import secrets; print(secrets.
 
 # --- Valori fissi ---
 export KEYCLOAK_ADMIN_USERNAME='admin-bootstrap'
-export HELIOS_DR_OPERATOR_USERNAME='luca.catalano'
+export HELIOS_DR_OPERATOR_USERNAME='mario.rossi'
 export HELIOS_DR_OPERATOR_EMPLOYEE_ID='demo-employee'
-export HELIOS_DR_OPERATOR_EMAIL='luca.catalano@terna.it'
+export HELIOS_DR_OPERATOR_EMAIL='mario.rossi@example.it'
 
 # --- TLS ---
 export HELIOS_TLS_CERT_FILE=~/azienda-lan.crt HELIOS_TLS_KEY_FILE=~/azienda-lan.key
@@ -451,24 +451,13 @@ DNS name e arma il controller solo dopo aver verificato il valore:
 alb_dns="$(kubectl -n helios-desk get ingress helios-public \
   -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
 test -n "$alb_dns"
-printf 'CLOUD_PROBE_MODE=https\nCLOUD_TARGET_HOST=%s\nCLOUD_DNS_TARGET=%s\nDR_AUTO_FAILOVER_ENABLED=true\n' "$alb_dns" "$alb_dns"
+printf 'CLOUD_PROBE_MODE=https\nCLOUD_TARGET_HOST=%s\nDR_AUTO_FAILOVER_ENABLED=true\n' "$alb_dns"
 ```
 
 I valori stampati vanno aggiunti al file, non usati per sostituirne il
 contenuto. Il bootstrap valida interlock, stato, timeout e target prima di
 avviare il servizio; una configurazione incompleta interrompe il bootstrap
 invece di essere interpretata come outage.
-
-`CLOUD_TARGET_HOST` e `CLOUD_DNS_TARGET` devono contenere entrambi il **DNS
-name dell'ALB**, mai un suo IP: il primo e' il target del probe indipendente,
-il secondo fa pubblicare a Bind un CNAME tramite una Response Policy Zone (RPZ)
-applicata esclusivamente a `heliospoc.terna.it`; Bind non diventa autorevole
-per `terna.it`, quindi i domini aziendali di autenticazione restano risolvibili. Con
-`sudo bash automazione/lxc-lab/host-dns.sh enable`, anche le applicazioni
-eseguite sul WSL host interrogano `server-dns`: dopo il failover il controller
-pubblica un record `A` verso k3s on-prem; dopo il cutback manuale ripristina il
-CNAME verso AWS. Il TTL e' 30 secondi; usa `resolvectl flush-caches` se devi
-osservare subito il cambio.
 
 Se non hai un ACM **validato pubblicamente**, la via preferita e' un self-signed
 importato in ACM: l'edge resta HTTPS (login `__Host-*` intatto) e il probe punta
@@ -729,7 +718,7 @@ l'RTO viene scritto dal playbook e compare dopo il primo failover.
   `helpdesk-dr-backup-mirror.timer` (pull da S3 ogni 2 min, con retention e verifica
   del checksum). In lab sim senza AWS il produttore non esiste: il backup del drill
   resta uno stand-in creato a mano e messo nel mirror manualmente.
-- L'orchestrazione primaria cloud è attestata direttamente su AWS: `AUTOMATION_MODE=aws-lambda`
+- Il control plane AWS via LocalStack è stato rimosso: `AUTOMATION_MODE=aws-lambda`
   è verificabile solo sul primario AWS, non in lab.
 - Il drill spegne `cloud-k3s` (dominio di guasto del lab), non EKS reale.
 - `cloud-k3s` e `k3s-datacenter` sono cluster mononodo.
