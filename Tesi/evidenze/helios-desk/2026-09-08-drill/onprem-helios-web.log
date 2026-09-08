@@ -1,0 +1,28 @@
+2026-09-08T08:00:32.138508426Z /docker-entrypoint.sh: /docker-entrypoint.d/ is not empty, will attempt to perform configuration
+2026-09-08T08:00:32.138575944Z /docker-entrypoint.sh: Looking for shell scripts in /docker-entrypoint.d/
+2026-09-08T08:00:32.138580312Z /docker-entrypoint.sh: Launching /docker-entrypoint.d/10-listen-on-ipv6-by-default.sh
+2026-09-08T08:00:32.139433926Z 10-listen-on-ipv6-by-default.sh: info: /etc/nginx/conf.d/default.conf is not a file or does not exist
+2026-09-08T08:00:32.140011535Z /docker-entrypoint.sh: Sourcing /docker-entrypoint.d/15-local-resolvers.envsh
+2026-09-08T08:00:32.142779791Z /docker-entrypoint.sh: Launching /docker-entrypoint.d/20-envsubst-on-templates.sh
+2026-09-08T08:00:32.214505503Z 20-envsubst-on-templates.sh: Running envsubst on /etc/nginx/templates/default.conf.template to /etc/nginx/conf.d/default.conf
+2026-09-08T08:00:32.220931630Z /docker-entrypoint.sh: Launching /docker-entrypoint.d/30-tune-worker-processes.sh
+2026-09-08T08:00:32.222955074Z /docker-entrypoint.sh: Launching /docker-entrypoint.d/40-runtime-config.sh
+2026-09-08T08:00:32.231798782Z /docker-entrypoint.sh: Configuration complete; ready for start up
+2026-09-08T08:00:32.312204860Z 2026/09/08 08:00:32 [notice] 1#1: using the "epoll" event method
+2026-09-08T08:00:32.312249268Z 2026/09/08 08:00:32 [notice] 1#1: nginx/1.27.5
+2026-09-08T08:00:32.312251934Z 2026/09/08 08:00:32 [notice] 1#1: built by gcc 14.2.0 (Alpine 14.2.0) 
+2026-09-08T08:00:32.312252761Z 2026/09/08 08:00:32 [notice] 1#1: OS: Linux 6.18.33.2-microsoft-standard-WSL2
+2026-09-08T08:00:32.312253476Z 2026/09/08 08:00:32 [notice] 1#1: getrlimit(RLIMIT_NOFILE): 1048576:1048576
+2026-09-08T08:00:32.312254189Z 2026/09/08 08:00:32 [notice] 1#1: start worker processes
+2026-09-08T08:00:32.312556027Z 2026/09/08 08:00:32 [notice] 1#1: start worker process 36
+2026-09-08T08:00:32.312826635Z 2026/09/08 08:00:32 [notice] 1#1: start worker process 37
+2026-09-08T08:00:32.312998226Z 2026/09/08 08:00:32 [notice] 1#1: start worker process 38
+2026-09-08T08:00:32.313462511Z 2026/09/08 08:00:32 [notice] 1#1: start worker process 39
+2026-09-08T08:00:32.313679791Z 2026/09/08 08:00:32 [notice] 1#1: start worker process 40
+2026-09-08T08:00:32.313702985Z 2026/09/08 08:00:32 [notice] 1#1: start worker process 41
+2026-09-08T08:00:32.313929903Z 2026/09/08 08:00:32 [notice] 1#1: start worker process 42
+2026-09-08T08:00:32.314053421Z 2026/09/08 08:00:32 [notice] 1#1: start worker process 43
+2026-09-08T08:01:28.689952103Z 10.42.0.75 - - [08/Sep/2026:08:01:28 +0000] "GET / HTTP/1.1" 200 575 "-" "Mozilla/5.0 (X11; Linux x86_64; rv:154.0) Gecko/20100101 Firefox/154.0" "10.42.0.1"
+2026-09-08T08:01:28.731318238Z 10.42.0.75 - - [08/Sep/2026:08:01:28 +0000] "GET /config/runtime-config.json HTTP/1.1" 200 158 "https://heliospoc.terna.it/" "Mozilla/5.0 (X11; Linux x86_64; rv:154.0) Gecko/20100101 Firefox/154.0" "10.42.0.1"
+2026-09-08T08:01:43.507585736Z 10.42.0.75 - - [08/Sep/2026:08:01:43 +0000] "GET / HTTP/1.1" 200 575 "-" "Mozilla/5.0 (X11; Linux x86_64; rv:154.0) Gecko/20100101 Firefox/154.0" "10.42.0.1"
+2026-09-08T08:01:43.598837741Z 10.42.0.75 - - [08/Sep/2026:08:01:43 +0000] "GET /config/runtime-config.json HTTP/1.1" 200 158 "https://heliospoc.terna.it/" "Mozilla/5.0 (X11; Linux x86_64; rv:154.0) Gecko/20100101 Firefox/154.0" "10.42.0.1"

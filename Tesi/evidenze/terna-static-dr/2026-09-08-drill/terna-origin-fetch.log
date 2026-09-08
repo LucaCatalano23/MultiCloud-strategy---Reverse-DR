@@ -1,0 +1,4 @@
+2026-09-08T09:36:40.888210+00:00 k3s-datacenter systemd[1]: Starting terna-static-origin-fetch.service - Build and publish the public Terna static asset bundle...
+2026-09-08T09:36:40.926067+00:00 k3s-datacenter terna-static-origin-fetch.sh[731606]: Terna DR is active; scheduled snapshot refresh skipped.
+2026-09-08T09:36:40.926781+00:00 k3s-datacenter systemd[1]: terna-static-origin-fetch.service: Deactivated successfully.
+2026-09-08T09:36:40.926930+00:00 k3s-datacenter systemd[1]: Finished terna-static-origin-fetch.service - Build and publish the public Terna static asset bundle.

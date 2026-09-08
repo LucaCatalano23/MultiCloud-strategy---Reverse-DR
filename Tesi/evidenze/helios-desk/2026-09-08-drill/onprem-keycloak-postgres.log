@@ -1,0 +1,36 @@
+2026-09-06T09:54:47.723622101Z 
+2026-09-06T09:54:47.723686882Z PostgreSQL Database directory appears to contain a database; Skipping initialization
+2026-09-06T09:54:47.723690943Z 
+2026-09-06T09:54:47.892605383Z 2026-09-06 09:54:47.892 UTC [1] LOG:  starting PostgreSQL 16.13 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+2026-09-06T09:54:47.898901674Z 2026-09-06 09:54:47.898 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+2026-09-06T09:54:47.899277718Z 2026-09-06 09:54:47.899 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+2026-09-06T09:54:47.923864211Z 2026-09-06 09:54:47.923 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+2026-09-06T09:54:47.953655990Z 2026-09-06 09:54:47.953 UTC [16] LOG:  database system was shut down at 2026-09-06 09:53:30 UTC
+2026-09-06T09:54:48.013531619Z 2026-09-06 09:54:47.983 UTC [1] LOG:  database system is ready to accept connections
+2026-09-06T09:55:08.206318610Z 2026-09-06 09:55:08.206 UTC [41] ERROR:  function aurora_version() does not exist at character 8
+2026-09-06T09:55:08.206353190Z 2026-09-06 09:55:08.206 UTC [41] HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+2026-09-06T09:55:08.206359150Z 2026-09-06 09:55:08.206 UTC [41] STATEMENT:  SELECT aurora_version()
+2026-09-06T09:59:48.031624905Z 2026-09-06 09:59:48.031 UTC [14] LOG:  checkpoint starting: time
+2026-09-06T09:59:48.145005045Z 2026-09-06 09:59:48.144 UTC [14] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.104 s, sync=0.003 s, total=0.114 s; sync files=3, longest=0.002 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/1E9B098, redo lsn=0/1E9B060
+2026-09-06T11:49:49.977009072Z 2026-09-06 11:49:49.976 UTC [14] LOG:  checkpoint starting: time
+2026-09-06T11:49:51.300093511Z 2026-09-06 11:49:51.299 UTC [14] LOG:  checkpoint complete: wrote 14 buffers (0.1%); 0 WAL file(s) added, 0 removed, 0 recycled; write=1.311 s, sync=0.005 s, total=1.324 s; sync files=14, longest=0.003 s, average=0.001 s; distance=42 kB, estimate=42 kB; lsn=0/1EA5A70, redo lsn=0/1EA5A38
+2026-09-06T12:09:49.613586396Z 2026-09-06 12:09:49.613 UTC [14] LOG:  checkpoint starting: time
+2026-09-06T12:09:50.853268921Z 2026-09-06 12:09:50.853 UTC [14] LOG:  checkpoint complete: wrote 13 buffers (0.1%); 0 WAL file(s) added, 0 removed, 0 recycled; write=1.209 s, sync=0.010 s, total=1.241 s; sync files=13, longest=0.005 s, average=0.001 s; distance=38 kB, estimate=42 kB; lsn=0/1EAF2E0, redo lsn=0/1EAF2A8
+2026-09-06T12:19:50.004616464Z 2026-09-06 12:19:50.004 UTC [14] LOG:  checkpoint starting: time
+2026-09-06T12:19:50.250120442Z 2026-09-06 12:19:50.249 UTC [14] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.208 s, sync=0.012 s, total=0.246 s; sync files=3, longest=0.008 s, average=0.004 s; distance=7 kB, estimate=38 kB; lsn=0/1EB12C0, redo lsn=0/1EB1288
+2026-09-06T12:24:50.348152729Z 2026-09-06 12:24:50.347 UTC [14] LOG:  checkpoint starting: time
+2026-09-06T12:24:51.603541352Z 2026-09-06 12:24:51.603 UTC [14] LOG:  checkpoint complete: wrote 13 buffers (0.1%); 0 WAL file(s) added, 0 removed, 0 recycled; write=1.211 s, sync=0.017 s, total=1.256 s; sync files=13, longest=0.014 s, average=0.002 s; distance=40 kB, estimate=40 kB; lsn=0/1EBB388, redo lsn=0/1EBB350
+2026-09-06T12:44:50.938208802Z 2026-09-06 12:44:50.937 UTC [14] LOG:  checkpoint starting: time
+2026-09-06T12:44:51.166314209Z 2026-09-06 12:44:51.166 UTC [14] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.205 s, sync=0.004 s, total=0.229 s; sync files=3, longest=0.003 s, average=0.002 s; distance=9 kB, estimate=37 kB; lsn=0/1EBD8F0, redo lsn=0/1EBD8B8
+2026-09-06T12:54:50.364091837Z 2026-09-06 12:54:50.363 UTC [14] LOG:  checkpoint starting: time
+2026-09-06T12:54:51.584650839Z 2026-09-06 12:54:51.584 UTC [14] LOG:  checkpoint complete: wrote 13 buffers (0.1%); 0 WAL file(s) added, 0 removed, 0 recycled; write=1.206 s, sync=0.006 s, total=1.221 s; sync files=13, longest=0.003 s, average=0.001 s; distance=42 kB, estimate=42 kB; lsn=0/1EC8278, redo lsn=0/1EC8240
+2026-09-06T12:59:50.683760168Z 2026-09-06 12:59:50.683 UTC [14] LOG:  checkpoint starting: time
+2026-09-06T12:59:50.951853211Z 2026-09-06 12:59:50.951 UTC [14] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.207 s, sync=0.018 s, total=0.269 s; sync files=3, longest=0.012 s, average=0.006 s; distance=5 kB, estimate=38 kB; lsn=0/1EC9788, redo lsn=0/1EC9750
+2026-09-06T13:09:51.143848705Z 2026-09-06 13:09:51.143 UTC [14] LOG:  checkpoint starting: time
+2026-09-06T13:09:52.422644163Z 2026-09-06 13:09:52.415 UTC [14] LOG:  checkpoint complete: wrote 13 buffers (0.1%); 0 WAL file(s) added, 0 removed, 0 recycled; write=1.210 s, sync=0.042 s, total=1.273 s; sync files=13, longest=0.026 s, average=0.004 s; distance=38 kB, estimate=38 kB; lsn=0/1ED3348, redo lsn=0/1ED3310
+2026-09-06T13:29:51.748534111Z 2026-09-06 13:29:51.748 UTC [14] LOG:  checkpoint starting: time
+2026-09-06T13:29:51.982843801Z 2026-09-06 13:29:51.982 UTC [14] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.206 s, sync=0.008 s, total=0.235 s; sync files=3, longest=0.006 s, average=0.003 s; distance=6 kB, estimate=35 kB; lsn=0/1ED4DC0, redo lsn=0/1ED4D88
+2026-09-06T13:44:52.282743256Z 2026-09-06 13:44:52.282 UTC [14] LOG:  checkpoint starting: time
+2026-09-06T13:44:52.551644735Z 2026-09-06 13:44:52.551 UTC [14] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.230 s, sync=0.008 s, total=0.270 s; sync files=3, longest=0.006 s, average=0.003 s; distance=6 kB, estimate=32 kB; lsn=0/1ED6838, redo lsn=0/1ED6800
+2026-09-08T08:05:42.680090881Z 2026-09-08 08:05:42.679 UTC [14] LOG:  checkpoint starting: time
+2026-09-08T08:05:43.946707256Z 2026-09-08 08:05:43.946 UTC [14] LOG:  checkpoint complete: wrote 13 buffers (0.1%); 0 WAL file(s) added, 0 removed, 0 recycled; write=1.226 s, sync=0.020 s, total=1.267 s; sync files=13, longest=0.012 s, average=0.002 s; distance=41 kB, estimate=41 kB; lsn=0/1EE0CA0, redo lsn=0/1EE0C68

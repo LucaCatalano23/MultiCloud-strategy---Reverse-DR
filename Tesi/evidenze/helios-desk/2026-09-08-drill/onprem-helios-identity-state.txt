@@ -1,0 +1,16 @@
+NAME                            READY   STATUS    RESTARTS       AGE   IP           NODE             NOMINATED NODE   READINESS GATES
+pod/keycloak-5457b99bd8-lvpcj   1/1     Running   13 (46h ago)   27d   10.42.0.71   k3s-datacenter   <none>           <none>
+pod/keycloak-postgres-0         1/1     Running   13 (46h ago)   27d   10.42.0.86   k3s-datacenter   <none>           <none>
+
+NAME                        TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)             AGE   SELECTOR
+service/keycloak            ClusterIP   10.43.44.54   <none>        8080/TCP,9000/TCP   32d   app.kubernetes.io/name=keycloak
+service/keycloak-postgres   ClusterIP   None          <none>        5432/TCP            32d   app.kubernetes.io/name=keycloak-postgres
+
+NAME                       READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS   IMAGES                             SELECTOR
+deployment.apps/keycloak   1/1     1            1           32d   keycloak     quay.io/keycloak/keycloak:26.7.0   app.kubernetes.io/name=keycloak
+
+NAME                                  DESIRED   CURRENT   READY   AGE   CONTAINERS   IMAGES                             SELECTOR
+replicaset.apps/keycloak-5457b99bd8   1         1         1       32d   keycloak     quay.io/keycloak/keycloak:26.7.0   app.kubernetes.io/name=keycloak,pod-template-hash=5457b99bd8
+
+NAME                                 READY   AGE   CONTAINERS   IMAGES
+statefulset.apps/keycloak-postgres   1/1     32d   postgres     postgres:16.13-alpine

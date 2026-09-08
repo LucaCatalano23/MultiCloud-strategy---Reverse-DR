@@ -1,0 +1,21 @@
+2026-09-06T09:54:46.051312890Z 06 Sep 2026 09:54:46,048 [INFO] (rapid) exec '/lambda-entrypoint.sh' (cwd=/var/task, handler=handler.handler)
+2026-09-06T12:09:25.198057579Z START RequestId: feffea6c-2b6b-4b2f-ab02-452d59f0fd01 Version: $LATEST
+2026-09-06T12:09:25.198820161Z 06 Sep 2026 12:09:25,198 [INFO] (rapid) INIT START(type: on-demand, phase: init)
+2026-09-06T12:09:25.199080560Z 06 Sep 2026 12:09:25,198 [INFO] (rapid) The extension's directory "/opt/extensions" does not exist, assuming no extensions to be loaded.
+2026-09-06T12:09:25.199323312Z 06 Sep 2026 12:09:25,199 [INFO] (rapid) Starting runtime without AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN , Expected?: false
+2026-09-06T12:09:25.312671488Z 06 Sep 2026 12:09:25,312 [INFO] (rapid) INIT RTDONE(status: success)
+2026-09-06T12:09:25.312689156Z 06 Sep 2026 12:09:25,312 [INFO] (rapid) INIT REPORT(durationMs: 114.900000)
+2026-09-06T12:09:25.312974619Z 06 Sep 2026 12:09:25,312 [INFO] (rapid) INVOKE START(requestId: feffea6c-2b6b-4b2f-ab02-452d59f0fd01)
+2026-09-06T12:09:25.314824359Z 06 Sep 2026 12:09:25,314 [INFO] (rapid) INVOKE RTDONE(status: success, produced bytes: 0, duration: 1.775000ms)
+2026-09-06T12:09:25.314862273Z END RequestId: feffea6c-2b6b-4b2f-ab02-452d59f0fd01
+2026-09-06T12:09:25.314878344Z REPORT RequestId: feffea6c-2b6b-4b2f-ab02-452d59f0fd01	Init Duration: 0.62 ms	Duration: 117.26 ms	Billed Duration: 118 ms	Memory Size: 512 MB	Max Memory Used: 512 MB	
+2026-09-06T13:08:59.691740197Z START RequestId: 68760f3e-aced-4fcb-a403-d3609422ed58 Version: $LATEST
+2026-09-06T13:08:59.695869702Z 06 Sep 2026 13:08:59,694 [INFO] (rapid) INVOKE START(requestId: 68760f3e-aced-4fcb-a403-d3609422ed58)
+2026-09-06T13:08:59.721818691Z END RequestId: 68760f3e-aced-4fcb-a403-d3609422ed58
+2026-09-06T13:08:59.721828941Z 06 Sep 2026 13:08:59,721 [INFO] (rapid) INVOKE RTDONE(status: success, produced bytes: 0, duration: 25.478000ms)
+2026-09-06T13:08:59.722253341Z REPORT RequestId: 68760f3e-aced-4fcb-a403-d3609422ed58	Duration: 32.35 ms	Billed Duration: 33 ms	Memory Size: 512 MB	Max Memory Used: 512 MB	
+2026-09-08T08:01:50.231628643Z START RequestId: 16a5c179-984b-41fc-ba36-1e986b437d5b Version: $LATEST
+2026-09-08T08:01:50.234115198Z 08 Sep 2026 08:01:50,233 [INFO] (rapid) INVOKE START(requestId: 16a5c179-984b-41fc-ba36-1e986b437d5b)
+2026-09-08T08:01:50.327350706Z END RequestId: 16a5c179-984b-41fc-ba36-1e986b437d5b
+2026-09-08T08:01:50.327371535Z REPORT RequestId: 16a5c179-984b-41fc-ba36-1e986b437d5b	Duration: 96.99 ms	Billed Duration: 97 ms	Memory Size: 512 MB	Max Memory Used: 512 MB	
+2026-09-08T08:01:50.327387845Z 08 Sep 2026 08:01:50,327 [INFO] (rapid) INVOKE RTDONE(status: success, produced bytes: 0, duration: 92.681000ms)

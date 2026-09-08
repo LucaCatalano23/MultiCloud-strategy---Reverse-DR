@@ -1,0 +1,27 @@
+LAST SEEN   TYPE      REASON              OBJECT                                           MESSAGE
+6m3s        Normal    Scheduled           pod/helios-bff-5b895c6d7-kcdrt                   Successfully assigned helios-desk/helios-bff-5b895c6d7-kcdrt to k3s-datacenter
+5m58s       Normal    Scheduled           pod/helios-web-66c4567648-jfxxg                  Successfully assigned helios-desk/helios-web-66c4567648-jfxxg to k3s-datacenter
+6m8s        Normal    Scheduled           pod/helios-automation-service-cc9b9f4ff-rj89f    Successfully assigned helios-desk/helios-automation-service-cc9b9f4ff-rj89f to k3s-datacenter
+6m14s       Normal    Scheduled           pod/helios-ticket-service-7bd988d848-6pbzk       Successfully assigned helios-desk/helios-ticket-service-7bd988d848-6pbzk to k3s-datacenter
+6m14s       Normal    ScalingReplicaSet   deployment/helios-ticket-service                 Scaled up replica set helios-ticket-service-7bd988d848 from 0 to 1
+6m14s       Normal    SuccessfulCreate    replicaset/helios-ticket-service-7bd988d848      Created pod: helios-ticket-service-7bd988d848-6pbzk
+6m13s       Normal    Pulled              pod/helios-ticket-service-7bd988d848-6pbzk       Container image "helios-ticket-service:local" already present on machine and can be accessed by the pod
+6m13s       Normal    Started             pod/helios-ticket-service-7bd988d848-6pbzk       Container started
+6m13s       Normal    Created             pod/helios-ticket-service-7bd988d848-6pbzk       Container created
+6m8s        Normal    SuccessfulCreate    replicaset/helios-automation-service-cc9b9f4ff   Created pod: helios-automation-service-cc9b9f4ff-rj89f
+6m8s        Normal    Created             pod/helios-automation-service-cc9b9f4ff-rj89f    Container created
+6m8s        Normal    Pulled              pod/helios-automation-service-cc9b9f4ff-rj89f    Container image "helios-automation-service:local" already present on machine and can be accessed by the pod
+6m8s        Normal    ScalingReplicaSet   deployment/helios-automation-service             Scaled up replica set helios-automation-service-cc9b9f4ff from 0 to 1
+6m8s        Normal    Started             pod/helios-automation-service-cc9b9f4ff-rj89f    Container started
+6m3s        Normal    Created             pod/helios-bff-5b895c6d7-kcdrt                   Container created
+6m3s        Normal    ScalingReplicaSet   deployment/helios-bff                            Scaled up replica set helios-bff-5b895c6d7 from 0 to 1
+6m3s        Normal    SuccessfulCreate    replicaset/helios-bff-5b895c6d7                  Created pod: helios-bff-5b895c6d7-kcdrt
+6m3s        Normal    Started             pod/helios-bff-5b895c6d7-kcdrt                   Container started
+6m3s        Normal    Pulled              pod/helios-bff-5b895c6d7-kcdrt                   Container image "helios-bff:local" already present on machine and can be accessed by the pod
+5m58s       Normal    Pulled              pod/helios-web-66c4567648-jfxxg                  Container image "reverse-dr/helios-desk-frontend:local" already present on machine and can be accessed by the pod
+5m58s       Normal    Created             pod/helios-web-66c4567648-jfxxg                  Container created
+5m58s       Normal    SuccessfulCreate    replicaset/helios-web-66c4567648                 Created pod: helios-web-66c4567648-jfxxg
+5m58s       Normal    ScalingReplicaSet   deployment/helios-web                            Scaled up replica set helios-web-66c4567648 from 0 to 1
+5m57s       Normal    Started             pod/helios-web-66c4567648-jfxxg                  Container started
+3m45s       Warning   Unhealthy           pod/helios-bff-5b895c6d7-kcdrt                   Readiness probe failed: HTTP probe failed with statuscode: 503
+3m8s        Normal    Valid               secretstore/openbao-application                  store validated

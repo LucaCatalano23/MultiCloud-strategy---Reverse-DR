@@ -1,0 +1,78 @@
+Name:             terna-static-web-5cd48699db-ghvs4
+Namespace:        terna-static-dr
+Priority:         0
+Service Account:  default
+Node:             k3s-datacenter/10.10.3.10
+Start Time:       Mon, 24 Aug 2026 14:51:16 +0000
+Labels:           app=terna-static-web
+                  pod-template-hash=5cd48699db
+Annotations:      kubectl.kubernetes.io/restartedAt: 2026-08-24T14:51:16Z
+Status:           Running
+IP:               10.42.0.87
+IPs:
+  IP:           10.42.0.87
+Controlled By:  ReplicaSet/terna-static-web-5cd48699db
+Containers:
+  static-web:
+    Container ID:  containerd://67d1067a5c5862f9a42b889e23aa5123e1de736811bf71588fde1cb3c53fdc92
+    Image:         nginx:1.27-alpine
+    Image ID:      sha256:6769dc3a703c719c1d2756bda113659be28ae16cf0da58dd5fd823d6b9a050ea
+    Port:          8080/TCP
+    Host Port:     0/TCP
+    Command:
+      nginx
+      -g
+      daemon off;
+    State:          Running
+      Started:      Sun, 06 Sep 2026 09:54:48 +0000
+    Last State:     Terminated
+      Reason:       Completed
+      Exit Code:    0
+      Started:      Sun, 06 Sep 2026 09:23:28 +0000
+      Finished:     Sun, 06 Sep 2026 09:53:30 +0000
+    Ready:          True
+    Restart Count:  7
+    Liveness:       http-get http://:8080/health delay=0s timeout=1s period=10s #success=1 #failure=3
+    Readiness:      exec [/bin/sh -ec test -s /usr/share/nginx/html/current/index.html && test -s /usr/share/nginx/html/current/manifest.json && test -f /usr/share/nginx/html/current/.bundle-v1 && test -s /usr/share/nginx/html/current/dr/load-chart/index.html && test -s /usr/share/nginx/html/current/dr/load-chart/data.json && (test -f /usr/share/nginx/html/current/dr/load-chart/.load-chart-v1 || test -f /usr/share/nginx/html/current/dr/load-chart/.load-chart-placeholder-v1)] delay=0s timeout=1s period=10s #success=1 #failure=3
+    Environment:    <none>
+    Mounts:
+      /etc/nginx/conf.d/default.conf from nginx-config (ro,path="default.conf")
+      /usr/share/nginx/html from static-data (ro)
+      /var/cache/nginx from nginx-cache (rw)
+      /var/run from nginx-run (rw)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-g7hbb (ro)
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       True 
+  ContainersReady             True 
+  PodScheduled                True 
+Volumes:
+  static-data:
+    Type:          HostPath (bare host directory volume)
+    Path:          /srv/terna-static-dr/static
+    HostPathType:  DirectoryOrCreate
+  nginx-config:
+    Type:      ConfigMap (a volume populated by a ConfigMap)
+    Name:      terna-static-nginx-config
+    Optional:  false
+  nginx-cache:
+    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:     
+    SizeLimit:  <unset>
+  nginx-run:
+    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:     
+    SizeLimit:  <unset>
+  kube-api-access-g7hbb:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    Optional:                false
+    DownwardAPI:             true
+QoS Class:                   BestEffort
+Node-Selectors:              <none>
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:                      <none>

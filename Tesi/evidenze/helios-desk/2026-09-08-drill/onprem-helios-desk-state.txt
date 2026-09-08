@@ -1,0 +1,45 @@
+NAME                                            READY   STATUS    RESTARTS   AGE     IP            NODE             NOMINATED NODE   READINESS GATES
+pod/helios-automation-service-cc9b9f4ff-rj89f   1/1     Running   0          6m8s    10.42.0.136   k3s-datacenter   <none>           <none>
+pod/helios-bff-5b895c6d7-kcdrt                  1/1     Running   0          6m3s    10.42.0.137   k3s-datacenter   <none>           <none>
+pod/helios-ticket-service-7bd988d848-6pbzk      1/1     Running   0          6m14s   10.42.0.135   k3s-datacenter   <none>           <none>
+pod/helios-web-66c4567648-jfxxg                 1/1     Running   0          5m58s   10.42.0.138   k3s-datacenter   <none>           <none>
+
+NAME                                TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE   SELECTOR
+service/helios-automation-service   ClusterIP   10.43.240.238   <none>        8002/TCP   32d   app.kubernetes.io/name=helios-automation-service
+service/helios-bff                  ClusterIP   10.43.223.177   <none>        8000/TCP   32d   app.kubernetes.io/name=helios-bff
+service/helios-ticket-service       ClusterIP   10.43.23.168    <none>        8001/TCP   32d   app.kubernetes.io/name=helios-ticket-service
+service/helios-web                  ClusterIP   10.43.47.114    <none>        8080/TCP   32d   app.kubernetes.io/name=helios-web
+
+NAME                                        READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS           IMAGES                                  SELECTOR
+deployment.apps/helios-automation-service   1/1     1            1           32d   automation-service   helios-automation-service:local         app.kubernetes.io/name=helios-automation-service
+deployment.apps/helios-bff                  1/1     1            1           32d   bff                  helios-bff:local                        app.kubernetes.io/name=helios-bff
+deployment.apps/helios-ticket-service       1/1     1            1           32d   ticket-service       helios-ticket-service:local             app.kubernetes.io/name=helios-ticket-service
+deployment.apps/helios-web                  1/1     1            1           32d   web                  reverse-dr/helios-desk-frontend:local   app.kubernetes.io/name=helios-web
+
+NAME                                                   DESIRED   CURRENT   READY   AGE   CONTAINERS           IMAGES                                  SELECTOR
+replicaset.apps/helios-automation-service-566678648d   0         0         0       32d   automation-service   helios-automation-service:local         app.kubernetes.io/name=helios-automation-service,pod-template-hash=566678648d
+replicaset.apps/helios-automation-service-5bd849dcfb   0         0         0       28d   automation-service   helios-automation-service:local         app.kubernetes.io/name=helios-automation-service,pod-template-hash=5bd849dcfb
+replicaset.apps/helios-automation-service-5ff7c4555    0         0         0       27d   automation-service   helios-automation-service:local         app.kubernetes.io/name=helios-automation-service,pod-template-hash=5ff7c4555
+replicaset.apps/helios-automation-service-7745966899   0         0         0       44h   automation-service   helios-automation-service:local         app.kubernetes.io/name=helios-automation-service,pod-template-hash=7745966899
+replicaset.apps/helios-automation-service-7bc9fbf9dd   0         0         0       27d   automation-service   helios-automation-service:local         app.kubernetes.io/name=helios-automation-service,pod-template-hash=7bc9fbf9dd
+replicaset.apps/helios-automation-service-7d7f5d48cc   0         0         0       44h   automation-service   helios-automation-service:local         app.kubernetes.io/name=helios-automation-service,pod-template-hash=7d7f5d48cc
+replicaset.apps/helios-automation-service-cc9b9f4ff    1         1         1       27d   automation-service   helios-automation-service:local         app.kubernetes.io/name=helios-automation-service,pod-template-hash=cc9b9f4ff
+replicaset.apps/helios-bff-557dbc88dc                  0         0         0       27d   bff                  helios-bff:local                        app.kubernetes.io/name=helios-bff,pod-template-hash=557dbc88dc
+replicaset.apps/helios-bff-5b895c6d7                   1         1         1       27d   bff                  helios-bff:local                        app.kubernetes.io/name=helios-bff,pod-template-hash=5b895c6d7
+replicaset.apps/helios-bff-65bb685cf6                  0         0         0       44h   bff                  helios-bff:local                        app.kubernetes.io/name=helios-bff,pod-template-hash=65bb685cf6
+replicaset.apps/helios-bff-66c44df4d7                  0         0         0       28d   bff                  helios-bff:local                        app.kubernetes.io/name=helios-bff,pod-template-hash=66c44df4d7
+replicaset.apps/helios-bff-69687f574d                  0         0         0       27d   bff                  helios-bff:local                        app.kubernetes.io/name=helios-bff,pod-template-hash=69687f574d
+replicaset.apps/helios-bff-76fd974cfb                  0         0         0       43h   bff                  helios-bff:local                        app.kubernetes.io/name=helios-bff,pod-template-hash=76fd974cfb
+replicaset.apps/helios-bff-7bdc6fff8b                  0         0         0       28d   bff                  helios-bff:local                        app.kubernetes.io/name=helios-bff,pod-template-hash=7bdc6fff8b
+replicaset.apps/helios-bff-dd7cf767f                   0         0         0       32d   bff                  helios-bff:local                        app.kubernetes.io/name=helios-bff,pod-template-hash=dd7cf767f
+replicaset.apps/helios-bff-fd99dc7dd                   0         0         0       44h   bff                  helios-bff:local                        app.kubernetes.io/name=helios-bff,pod-template-hash=fd99dc7dd
+replicaset.apps/helios-ticket-service-5dc888c579       0         0         0       28d   ticket-service       helios-ticket-service:local             app.kubernetes.io/name=helios-ticket-service,pod-template-hash=5dc888c579
+replicaset.apps/helios-ticket-service-64fcbc9566       0         0         0       44h   ticket-service       helios-ticket-service:local             app.kubernetes.io/name=helios-ticket-service,pod-template-hash=64fcbc9566
+replicaset.apps/helios-ticket-service-66d9f8cdcc       0         0         0       27d   ticket-service       helios-ticket-service:local             app.kubernetes.io/name=helios-ticket-service,pod-template-hash=66d9f8cdcc
+replicaset.apps/helios-ticket-service-6cc8778fc5       0         0         0       32d   ticket-service       helios-ticket-service:local             app.kubernetes.io/name=helios-ticket-service,pod-template-hash=6cc8778fc5
+replicaset.apps/helios-ticket-service-7bd988d848       1         1         1       27d   ticket-service       helios-ticket-service:local             app.kubernetes.io/name=helios-ticket-service,pod-template-hash=7bd988d848
+replicaset.apps/helios-ticket-service-8589b5dfb        0         0         0       27d   ticket-service       helios-ticket-service:local             app.kubernetes.io/name=helios-ticket-service,pod-template-hash=8589b5dfb
+replicaset.apps/helios-ticket-service-86564c95b4       0         0         0       44h   ticket-service       helios-ticket-service:local             app.kubernetes.io/name=helios-ticket-service,pod-template-hash=86564c95b4
+replicaset.apps/helios-web-66c4567648                  1         1         1       28d   web                  reverse-dr/helios-desk-frontend:local   app.kubernetes.io/name=helios-web,pod-template-hash=66c4567648
+replicaset.apps/helios-web-7b6485b66f                  0         0         0       27d   web                  reverse-dr/helios-desk-frontend:local   app.kubernetes.io/name=helios-web,pod-template-hash=7b6485b66f
+replicaset.apps/helios-web-84f9b68dc5                  0         0         0       32d   web                  reverse-dr/helios-desk-frontend:local   app.kubernetes.io/name=helios-web,pod-template-hash=84f9b68dc5

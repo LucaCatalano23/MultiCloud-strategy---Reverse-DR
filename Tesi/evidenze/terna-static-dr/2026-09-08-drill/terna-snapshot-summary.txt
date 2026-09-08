@@ -1,0 +1,4 @@
+bundle=/srv/terna-static-dr/static/bundles/bundle.1788859600.m0MzGQ
+captured_at=2026-09-08T09:27:20Z
+capture_mode=static-bundle
+-rw-r----- 1 ubuntu messagebus 11 Sep  8 09:27 /srv/terna-static-dr/static/current/dr/load-chart/.load-chart-v1

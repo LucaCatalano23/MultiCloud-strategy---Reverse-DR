@@ -1,0 +1,2 @@
+LAST SEEN   TYPE     REASON   OBJECT                         MESSAGE
+3m37s       Normal   Valid    secretstore/openbao-identity   store validated

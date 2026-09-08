@@ -1,0 +1,618 @@
+{
+  "asset_count": 121,
+  "assets": {
+    "https://www.terna.it/DependencyHandler.axd/0bdfdd8e23720ddd9ec7209ae521d21a/24/js": {
+      "bytes": 326766,
+      "path": "DependencyHandler.axd/0bdfdd8e23720ddd9ec7209ae521d21a/24/js",
+      "sha256": "a2cfc7e42bc84f259f680fa1c747f6fb9764f7c9022f3b73dd48fe2f792ac2fd"
+    },
+    "https://www.terna.it/DependencyHandler.axd/59d60664514c0ef35f2afde55525c5f7/24/js": {
+      "bytes": 15906,
+      "path": "DependencyHandler.axd/59d60664514c0ef35f2afde55525c5f7/24/js",
+      "sha256": "54aab6dbfc13b00dce45a51d0a54e083aa566314aa7e7c01261a6333cc90e687"
+    },
+    "https://www.terna.it/DependencyHandler.axd/8ff0bbffff89ec54554687b27d3cf603/24/css": {
+      "bytes": 66783,
+      "path": "DependencyHandler.axd/8ff0bbffff89ec54554687b27d3cf603/24/css",
+      "sha256": "00a521e4125b5a64d72126c176da6a8537d0526cfe00ee39506f036982ae293e"
+    },
+    "https://www.terna.it/Portals/0/Resources/home/fix-archive-list.js": {
+      "bytes": 1561,
+      "path": "Portals/0/Resources/home/fix-archive-list.js",
+      "sha256": "5a28aa355e8dd5150c0d339bee80a946b5bacb83b0732292c6a1f33663500cfe"
+    },
+    "https://www.terna.it/Portals/0/Resources/home/fix-box-dati.js": {
+      "bytes": 1010,
+      "path": "Portals/0/Resources/home/fix-box-dati.js",
+      "sha256": "ed9b6bf515767dc0b1e75cdbeae5100119a64a86dc13a93083c1a760a7e2f25b"
+    },
+    "https://www.terna.it/Portals/0/Resources/home/hp-calendar/assets/index.css": {
+      "bytes": 18050,
+      "path": "Portals/0/Resources/home/hp-calendar/assets/index.css",
+      "sha256": "aa4ea0410321f1fc0d162bb084f939dfc6e416bd63a42519de5573bb78ca09f0"
+    },
+    "https://www.terna.it/Portals/0/Resources/home/hp-calendar/assets/index.js": {
+      "bytes": 169313,
+      "path": "Portals/0/Resources/home/hp-calendar/assets/index.js",
+      "sha256": "179634ed7cfc53be838a1ed3ddedc939ae6f4f338548560794572ff78f8c1446"
+    },
+    "https://www.terna.it/Portals/0/Resources/home/hp-calendar/calendar-it.json": {
+      "bytes": 1095,
+      "path": "Portals/0/Resources/home/hp-calendar/calendar-it.json",
+      "sha256": "f9f8d637640e69e606cabb9871048a35976f85c91eb89d8480d7252859d45c6d"
+    },
+    "https://www.terna.it/Portals/0/Resources/kpi-slider/assets/index.css": {
+      "bytes": 14179,
+      "path": "Portals/0/Resources/kpi-slider/assets/index.css",
+      "sha256": "483ff5c3d5893816c101b533009b7ef47a440d4898e3c41ad3b5f979cc2a781a"
+    },
+    "https://www.terna.it/Portals/0/Resources/kpi-slider/assets/index.js": {
+      "bytes": 159837,
+      "path": "Portals/0/Resources/kpi-slider/assets/index.js",
+      "sha256": "10a3b135f54ef448e95434a46190c820d51ed6c106cf1933a5cbc71c78d5f8fe"
+    },
+    "https://www.terna.it/Portals/0/favicon.ico?ver=2020-03-25-121858-673": {
+      "bytes": 5430,
+      "path": "Portals/0/favicon.q-69f11dbfef46.ico",
+      "sha256": "24766c96448a1575877bed22d0525f55681abd4937b640a7355791a564464e3f"
+    },
+    "https://www.terna.it/Portals/0/portal.css?v=20260618.02": {
+      "bytes": 189,
+      "path": "Portals/0/portal.q-a68f373be8b1.css",
+      "sha256": "9e1d1f9e04fb14dea7fe013cd99a7cf32ccd1c5bdd3d8b121d373c7659d64cbf"
+    },
+    "https://www.terna.it/Portals/_default/Skins/Terna/Files/fonts/icons.svg?v=20260618.02": {
+      "bytes": 37154,
+      "path": "Portals/_default/Skins/Terna/Files/fonts/icons.q-a68f373be8b1.svg",
+      "sha256": "9289fdb396c4ed16b662f6b2a5a5e5f3be667c9db7148d26a34f570f2c05db7d"
+    },
+    "https://www.terna.it/Portals/_default/Skins/Terna/Files/fonts/icons.ttf?v=20260618.02": {
+      "bytes": 7200,
+      "path": "Portals/_default/Skins/Terna/Files/fonts/icons.q-a68f373be8b1.ttf",
+      "sha256": "de48288621d14f37eadae690a43b7a51e94a06c7aa33c59c91b8a2b7a317341c"
+    },
+    "https://www.terna.it/Portals/_default/Skins/Terna/Files/fonts/icons.woff?v=20260618.02": {
+      "bytes": 4636,
+      "path": "Portals/_default/Skins/Terna/Files/fonts/icons.q-a68f373be8b1.woff",
+      "sha256": "d76feeeb45d0473308ab54500cac5a466524a6bec8dbe2cb09f0e626fec6aacb"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Css/main.bundle.css?v=20260618.02": {
+      "bytes": 697321,
+      "path": "Portals/_default/skins/terna/Css/main.bundle.q-a68f373be8b1.css",
+      "sha256": "75cb8231f2ea25e07c6d632f0c4601cf335dde203b50224c77c31e50fbe8714f"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Css/main.min.css?v=20260618.02": {
+      "bytes": 171941,
+      "path": "Portals/_default/skins/terna/Css/main.min.q-a68f373be8b1.css",
+      "sha256": "4ff5b592f62e9b68d2def71fefe256ac65613eb34065c9900f6f6018e1040702"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Css/vendors-main.bundle.css?v=20260618.02": {
+      "bytes": 60166,
+      "path": "Portals/_default/skins/terna/Css/vendors-main.bundle.q-a68f373be8b1.css",
+      "sha256": "095be54f84cd72fc6cb1f26efe6a31b78bf684db3e930eb5e52eb9df3aa412dc"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/fonts/icons.svg": {
+      "bytes": 37154,
+      "path": "Portals/_default/skins/terna/Files/fonts/icons.svg",
+      "sha256": "9289fdb396c4ed16b662f6b2a5a5e5f3be667c9db7148d26a34f570f2c05db7d"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/fonts/icons.ttf": {
+      "bytes": 7200,
+      "path": "Portals/_default/skins/terna/Files/fonts/icons.ttf",
+      "sha256": "de48288621d14f37eadae690a43b7a51e94a06c7aa33c59c91b8a2b7a317341c"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/fonts/icons.woff": {
+      "bytes": 4636,
+      "path": "Portals/_default/skins/terna/Files/fonts/icons.woff",
+      "sha256": "d76feeeb45d0473308ab54500cac5a466524a6bec8dbe2cb09f0e626fec6aacb"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/aggregation.svg": {
+      "bytes": 866,
+      "path": "Portals/_default/skins/terna/Files/icons/aggregation.svg",
+      "sha256": "61d0c9f710f07445c12f7b772c46840cdd6c0aff2cb4744b7e22b58c1fe3fa19"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/arrows.svg": {
+      "bytes": 873,
+      "path": "Portals/_default/skins/terna/Files/icons/arrows.svg",
+      "sha256": "ba61d80e83d5582a018088f594bb954e1867b06e0b15be19bf98810bd17c7ea3"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/asc.svg": {
+      "bytes": 712,
+      "path": "Portals/_default/skins/terna/Files/icons/asc.svg",
+      "sha256": "647dcac6eeeac5f045b044a3757c31baf637996ef16e20304939163f64d77423"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/cancel.svg": {
+      "bytes": 874,
+      "path": "Portals/_default/skins/terna/Files/icons/cancel.svg",
+      "sha256": "77325a080dcb9e214eb4ee590455f54a9148a58846807fbea7528332a4d6b1c8"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/checkbox-checked-readonly.svg": {
+      "bytes": 793,
+      "path": "Portals/_default/skins/terna/Files/icons/checkbox-checked-readonly.svg",
+      "sha256": "46bb578d9ce7a9ed8f66bd3cdbf77ad887d46ff38ba91d8439eb7785c08cb8ba"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/checkbox-checked.svg": {
+      "bytes": 761,
+      "path": "Portals/_default/skins/terna/Files/icons/checkbox-checked.svg",
+      "sha256": "1185d653f20160699998b9f74a5e5f939a73e5d9dbb078b6cf8bec9fa0d379ae"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/checkbox-indeterminate-readonly.svg": {
+      "bytes": 782,
+      "path": "Portals/_default/skins/terna/Files/icons/checkbox-indeterminate-readonly.svg",
+      "sha256": "0891444debec21f2456f5908beab07c7e7a7dbfb2babfca219ebc983c39a9696"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/checkbox-indeterminate.svg": {
+      "bytes": 745,
+      "path": "Portals/_default/skins/terna/Files/icons/checkbox-indeterminate.svg",
+      "sha256": "dd849764faa7cc803d67c62a69e7334afbf7318cd197b0ea68d72c38ab99a13f"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/checkbox-unchecked-readonly.svg": {
+      "bytes": 779,
+      "path": "Portals/_default/skins/terna/Files/icons/checkbox-unchecked-readonly.svg",
+      "sha256": "1ea913d93369adf8f120beef521ae5758bbb7a6fa71a9939e2b889384927380c"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/checkbox-unchecked.svg": {
+      "bytes": 742,
+      "path": "Portals/_default/skins/terna/Files/icons/checkbox-unchecked.svg",
+      "sha256": "458d6fe9f46373bfce4f30864b5f459400229547285f2281e50ffffa90321fd4"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/column.svg": {
+      "bytes": 667,
+      "path": "Portals/_default/skins/terna/Files/icons/column.svg",
+      "sha256": "4fc791a4ff928a63d14205ea0eb0bd19c1e2b8b1a366a6d676636d8b16831010"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/columns.svg": {
+      "bytes": 1251,
+      "path": "Portals/_default/skins/terna/Files/icons/columns.svg",
+      "sha256": "4105dd1a185164cb3ff1a015b2e7b6b850322e3feb5d204fc782332d52e22f42"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/contracted.svg": {
+      "bytes": 743,
+      "path": "Portals/_default/skins/terna/Files/icons/contracted.svg",
+      "sha256": "6e65ba98c91923e1561eed2e3e81d020733dbc1012e73219fc4f22516f0183ec"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/copy.svg": {
+      "bytes": 896,
+      "path": "Portals/_default/skins/terna/Files/icons/copy.svg",
+      "sha256": "9ce7eb114bda6423b17299ebde18b1710ef6350e400c7eb4505525b923dcc127"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/cross.svg": {
+      "bytes": 635,
+      "path": "Portals/_default/skins/terna/Files/icons/cross.svg",
+      "sha256": "6b011a65cafeba2ea0309ba23ead5e092faa767c224328ed182ec92580430a1c"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/cut.svg": {
+      "bytes": 1391,
+      "path": "Portals/_default/skins/terna/Files/icons/cut.svg",
+      "sha256": "77456379896ec4f3fb41306d566c226ac61538aaba64476b6d78f90659158daa"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/desc.svg": {
+      "bytes": 717,
+      "path": "Portals/_default/skins/terna/Files/icons/desc.svg",
+      "sha256": "d2a6e4b293279a9e3637563d515682f6d62ad847f7b87cec5e8816cadd132a69"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/expanded.svg": {
+      "bytes": 752,
+      "path": "Portals/_default/skins/terna/Files/icons/expanded.svg",
+      "sha256": "1dbeea7a28eeb23868e64369fe2962bb4c5649c7e7803c2158cc18f7b2869ca0"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/eye-slash.svg": {
+      "bytes": 1924,
+      "path": "Portals/_default/skins/terna/Files/icons/eye-slash.svg",
+      "sha256": "cd2d5082fb420903e3870d654b1e4a4e82768de6920dd264e3a33751fafff18d"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/eye.svg": {
+      "bytes": 1144,
+      "path": "Portals/_default/skins/terna/Files/icons/eye.svg",
+      "sha256": "8cc721ffd944cf24aec941c2c081aabb742f6064339c0f9fc2f95a892a28bfba"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/filter.svg": {
+      "bytes": 741,
+      "path": "Portals/_default/skins/terna/Files/icons/filter.svg",
+      "sha256": "3c6b72d24ff15b4af9f551537effae1c2191fa0db381c58c2d466f859849f1ca"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/first.svg": {
+      "bytes": 817,
+      "path": "Portals/_default/skins/terna/Files/icons/first.svg",
+      "sha256": "be0cef733e3f494cda1122664fe874bfb75759312fb4630f5db5a404a49a3f83"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/grip.svg": {
+      "bytes": 663,
+      "path": "Portals/_default/skins/terna/Files/icons/grip.svg",
+      "sha256": "854ec8cd691a2ff27d9d65f4428a26aad897ebb2bda66097787f37ccd1ab9e7a"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/group.svg": {
+      "bytes": 1058,
+      "path": "Portals/_default/skins/terna/Files/icons/group.svg",
+      "sha256": "4cb9672bc2a2e44ba1a234b63d168e355c3fc5c9ad29fe2731d9abf6cf97ed6e"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/indeterminate.svg": {
+      "bytes": 988,
+      "path": "Portals/_default/skins/terna/Files/icons/indeterminate.svg",
+      "sha256": "7b25559299087ba189e8fe57693f86da57fa2c635e4ff3656279a43395bfecaa"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/last.svg": {
+      "bytes": 913,
+      "path": "Portals/_default/skins/terna/Files/icons/last.svg",
+      "sha256": "ce2703d4c4b4ced557d48c8c04231045445094deac50e318e50a49e2acf9b78c"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/left.svg": {
+      "bytes": 619,
+      "path": "Portals/_default/skins/terna/Files/icons/left.svg",
+      "sha256": "8f681a8c708c868e8c65cfa78dd36dfcf27cc7fa5f1983c8c49000fcaae64aee"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/loading.svg": {
+      "bytes": 3364,
+      "path": "Portals/_default/skins/terna/Files/icons/loading.svg",
+      "sha256": "bbf6ad152d6551792dffcde8fe13dd669a385df3910ed62a4b57d197628ac1e9"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/menu.svg": {
+      "bytes": 737,
+      "path": "Portals/_default/skins/terna/Files/icons/menu.svg",
+      "sha256": "db22a1d288533db5c4ca7cc72529a941363dfdec353f3acd8aef8bfd5829bd9b"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/minus.svg": {
+      "bytes": 597,
+      "path": "Portals/_default/skins/terna/Files/icons/minus.svg",
+      "sha256": "c780057600081209fc878328360562c7203d31bd567210c128b3518aa08b931c"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/next.svg": {
+      "bytes": 744,
+      "path": "Portals/_default/skins/terna/Files/icons/next.svg",
+      "sha256": "3f61d43f56bdcd503e6d72eb777313f6ed3081465f52ce24a02b99b46aad3288"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/none.svg": {
+      "bytes": 735,
+      "path": "Portals/_default/skins/terna/Files/icons/none.svg",
+      "sha256": "43bd55f8da7dc2b0c15c189fe104d79a7c4cc7ef5962468ea97cb1f0608d3764"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/not-allowed.svg": {
+      "bytes": 930,
+      "path": "Portals/_default/skins/terna/Files/icons/not-allowed.svg",
+      "sha256": "8d10ba67d624f555603712491b6e0c7fe959ba028f8f9c166ca7a9d9e55ee2c3"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/paste.svg": {
+      "bytes": 1141,
+      "path": "Portals/_default/skins/terna/Files/icons/paste.svg",
+      "sha256": "60082059ab585e5ec48172720fa9de6f3146967329f0da9cf71a0aaf7efac10d"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/pin.svg": {
+      "bytes": 986,
+      "path": "Portals/_default/skins/terna/Files/icons/pin.svg",
+      "sha256": "030c5b1cb5f9838db4c6acce61dd5238686d807b2aae0f7421a6f1aa4afdfa16"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/pivot.svg": {
+      "bytes": 1184,
+      "path": "Portals/_default/skins/terna/Files/icons/pivot.svg",
+      "sha256": "3cc4fd261f1bf734040cf3c3d162f52f38d91aed330ca1525bb0d305fc034afb"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/plus.svg": {
+      "bytes": 635,
+      "path": "Portals/_default/skins/terna/Files/icons/plus.svg",
+      "sha256": "d9ea04e87731ecd42a38e5f4f2c7e2ace1d10cb0d1382d4bc7efaca9ff64e43a"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/previous.svg": {
+      "bytes": 739,
+      "path": "Portals/_default/skins/terna/Files/icons/previous.svg",
+      "sha256": "2f425fd1f1d89cb65a5e1f176b71d453e82eea795333d4d79bf80d158ac831f1"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/right.svg": {
+      "bytes": 620,
+      "path": "Portals/_default/skins/terna/Files/icons/right.svg",
+      "sha256": "9a65f6c74dcd0cf08bdc0faa5c7b5990d89260b5e9e86a6905af866b44357eaa"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/share.svg": {
+      "bytes": 1325,
+      "path": "Portals/_default/skins/terna/Files/icons/share.svg",
+      "sha256": "4fb19e14a0e2830eec68ac921b58e2d33c82b929db355f1c8a405f3a73a268af"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/small-down.svg": {
+      "bytes": 601,
+      "path": "Portals/_default/skins/terna/Files/icons/small-down.svg",
+      "sha256": "eb615f0dd8039408654c4307b9b1bf633b5271e50cc83d9a4379b6ee28c1979b"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/small-left.svg": {
+      "bytes": 707,
+      "path": "Portals/_default/skins/terna/Files/icons/small-left.svg",
+      "sha256": "191ad904b4510b962e94d63585ed736be80e4d064321e1d2b47fd24f1ccb51fe"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/small-right.svg": {
+      "bytes": 713,
+      "path": "Portals/_default/skins/terna/Files/icons/small-right.svg",
+      "sha256": "e9993cb235605a2791be1f8a9be9c6016040856b2a35a4a7af56728af80c514d"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/small-up.svg": {
+      "bytes": 685,
+      "path": "Portals/_default/skins/terna/Files/icons/small-up.svg",
+      "sha256": "500847cb25198323302a2cef72a7c970383a1f757104dc9713de7880ecf67bca"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/terna-link-arrow.svg": {
+      "bytes": 1057,
+      "path": "Portals/_default/skins/terna/Files/icons/terna-link-arrow.svg",
+      "sha256": "4680ea3dfbf83d27502a9ac9b8097fb57b67bf97e8130c80726cb371712e3795"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/terna-presentation.svg": {
+      "bytes": 1545,
+      "path": "Portals/_default/skins/terna/Files/icons/terna-presentation.svg",
+      "sha256": "285ab1c15a579366def65ee7d1dc9996517975f99669d8360dd7c1b271cf6a11"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/terna-shadowline.svg": {
+      "bytes": 1587,
+      "path": "Portals/_default/skins/terna/Files/icons/terna-shadowline.svg",
+      "sha256": "117152a18817d1179de20745fbb4d1e87b61371845a5385e50ac10bb02ee532e"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/tick.svg": {
+      "bytes": 620,
+      "path": "Portals/_default/skins/terna/Files/icons/tick.svg",
+      "sha256": "de9c00c82548bc5e561054631b693478b01f2ee78901c4d9d0bc1540d1e3b876"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/tree-closed.svg": {
+      "bytes": 758,
+      "path": "Portals/_default/skins/terna/Files/icons/tree-closed.svg",
+      "sha256": "39d712b8da50acb7e346bc389e0a1a368b1b3b9bc4711dacdb2051b2e1f27c52"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/tree-indeterminate.svg": {
+      "bytes": 608,
+      "path": "Portals/_default/skins/terna/Files/icons/tree-indeterminate.svg",
+      "sha256": "c8e29c26c17a7b1bc1cb8a8e23b73378c2e58bc2676864932e692cc1eab836eb"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/icons/tree-open.svg": {
+      "bytes": 629,
+      "path": "Portals/_default/skins/terna/Files/icons/tree-open.svg",
+      "sha256": "27f5c24ed518074b7413be3ed3b66837fc36e090dfe44110f56d1f8045e488b5"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/404.png": {
+      "bytes": 101086,
+      "path": "Portals/_default/skins/terna/Files/images/404.png",
+      "sha256": "a23aeb0728cdfd1eae73219ee158927d46d698d8204aa84a8395d3bbc15176a6"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/500.png": {
+      "bytes": 110809,
+      "path": "Portals/_default/skins/terna/Files/images/500.png",
+      "sha256": "5770ffb0328f319479f3c4f928cde442b2ebd0b650836be2b4cdf393582b0b92"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/bg-shade-mobile.jpg": {
+      "bytes": 25346,
+      "path": "Portals/_default/skins/terna/Files/images/bg-shade-mobile.jpg",
+      "sha256": "748d32bbff271eff912a7d565a34f99c701d992356c88153c922461d2dab4459"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/bg-shade.jpg": {
+      "bytes": 82499,
+      "path": "Portals/_default/skins/terna/Files/images/bg-shade.jpg",
+      "sha256": "2e0cbf910773d454ef973376424bffa714739c8caf8550191b49488ba3dd831f"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/facebook-bg.png": {
+      "bytes": 5720,
+      "path": "Portals/_default/skins/terna/Files/images/facebook-bg.png",
+      "sha256": "8b9fbe95356994ba3593130a41a612240d041a53b1d3e35bbd36f9957ecacd29"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/flickr-bg.png": {
+      "bytes": 7572,
+      "path": "Portals/_default/skins/terna/Files/images/flickr-bg.png",
+      "sha256": "57b69db6b812a3de44875b2a7336f2dab1d23c5988366444cf8c8cbdf328d16b"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/instagram-bg.png": {
+      "bytes": 12047,
+      "path": "Portals/_default/skins/terna/Files/images/instagram-bg.png",
+      "sha256": "e921e882cb78b5b1a6cbb6e392996d86453504940cfb1b1b15a5d03b9dcfa596"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/linkedin-bg.png": {
+      "bytes": 4675,
+      "path": "Portals/_default/skins/terna/Files/images/linkedin-bg.png",
+      "sha256": "a7590f341005b55eeef310f4524498969ed732bae5a4ff3bf696054dff3abe6e"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/search-white.svg": {
+      "bytes": 882,
+      "path": "Portals/_default/skins/terna/Files/images/search-white.svg",
+      "sha256": "ea9293d7f7c0637f55322e5ba1baedd3e60c7a6a49d98e3340abab6b75ad82d7"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/search.svg": {
+      "bytes": 597,
+      "path": "Portals/_default/skins/terna/Files/images/search.svg",
+      "sha256": "439e298fc511c6186d71b26e2cc588fe46f9a19236eb5cf2ea5bab42dd213ffb"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/slideshare-bg.png": {
+      "bytes": 20697,
+      "path": "Portals/_default/skins/terna/Files/images/slideshare-bg.png",
+      "sha256": "a4c0a894403a6750d215fed22ac0bd7c0d91fd1a96267b329fda636425f12188"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/tags-dark.svg": {
+      "bytes": 843,
+      "path": "Portals/_default/skins/terna/Files/images/tags-dark.svg",
+      "sha256": "0a91dc0ab5df26fef475e23c1dd586d235354e2c75b56b1ec8e66fb0a7533014"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/tags-white.svg": {
+      "bytes": 843,
+      "path": "Portals/_default/skins/terna/Files/images/tags-white.svg",
+      "sha256": "6befc06ee18162a189fba95fc201d9f725dc049ad73ffdeeba907aef53889ea3"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/terna-blue.svg": {
+      "bytes": 5034,
+      "path": "Portals/_default/skins/terna/Files/images/terna-blue.svg",
+      "sha256": "78a7b451ed545bb24c016e22cbf040abf72bfd0b47c0d862369e512d1051d4e1"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/terna.svg": {
+      "bytes": 5034,
+      "path": "Portals/_default/skins/terna/Files/images/terna.svg",
+      "sha256": "4c902908d030fdf7e1d9ab4b6568e0faa65d16251a74c6c43afbc4ada4e327e3"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/tiktok-bg.png": {
+      "bytes": 6368,
+      "path": "Portals/_default/skins/terna/Files/images/tiktok-bg.png",
+      "sha256": "c4b63a2b4dcca6705d1eef59c09be8bf6f1cbd8c92ed24ab532845619dd5e436"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/twitter-bg.png": {
+      "bytes": 8196,
+      "path": "Portals/_default/skins/terna/Files/images/twitter-bg.png",
+      "sha256": "050fc5d29a7966c17fd5a0721caa874e9548d477b1afaa480ac0c07d77d487c6"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/waves-grey.png": {
+      "bytes": 247863,
+      "path": "Portals/_default/skins/terna/Files/images/waves-grey.png",
+      "sha256": "ed251bf6c661ee0e1ed16ac7d73723b5c2d01b9e8fbb61dbb3bde6a96d079cd0"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/waves.png": {
+      "bytes": 235288,
+      "path": "Portals/_default/skins/terna/Files/images/waves.png",
+      "sha256": "de8e1f555be3cca76d7b65dc47f6c83e09df9ee278677e7f3342dfb4fd6077a9"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/youtube-bg.png": {
+      "bytes": 5626,
+      "path": "Portals/_default/skins/terna/Files/images/youtube-bg.png",
+      "sha256": "57c7fe538c7b46cd92d2fbfdffd075119df0c1d8f378cfd81dc705c6b39b7965"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Files/images/zero-impact-website.jpg": {
+      "bytes": 25550,
+      "path": "Portals/_default/skins/terna/Files/images/zero-impact-website.jpg",
+      "sha256": "9bd5636c7c9701008c0cb0e85073fb2fda78e9fa2b2aa86406aca3d16d7c9d16"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Js/main.bundle.js?v=20260618.02": {
+      "bytes": 451490,
+      "path": "Portals/_default/skins/terna/Js/main.bundle.q-a68f373be8b1.js",
+      "sha256": "620aaffefbd00ad9ff887b4386b3af5154a2b671d4297bbf43a73997d4ed88aa"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Js/vendor.bundle.js?v=20260618.02": {
+      "bytes": 1641561,
+      "path": "Portals/_default/skins/terna/Js/vendor.bundle.q-a68f373be8b1.js",
+      "sha256": "3337da55c8142e3c76e95ee548d9515a9394690c68287433c8ae02b72c90f337"
+    },
+    "https://www.terna.it/Portals/_default/skins/terna/Js/vendors-main.bundle.js?v=20260618.02": {
+      "bytes": 1651507,
+      "path": "Portals/_default/skins/terna/Js/vendors-main.bundle.q-a68f373be8b1.js",
+      "sha256": "fe65c73674f4c6ba2cd5dbb286997171a82a0d12214e3ef373988a40b3d8d97f"
+    },
+    "https://www.terna.it/Resources/images/arrow-right-white.png": {
+      "bytes": 195284,
+      "path": "Resources/images/arrow-right-white.png",
+      "sha256": "068c9de7a5f8cb3db6addf1219d310a4339b7515aa35f44b240dda34d9df243e"
+    },
+    "https://www.terna.it/ScriptResource.axd?d=NJmAwtEo3IpAVljAgHRmf4BL-uHVkRpY8RTxE1W1cKTFv8phCWdSAf5L_my4jqLzUMu_2TwFddF-aDo0NaX01-G8XczGvye19ZeFKVnv5hkx5XQ6LHVBz64R9mHpk1eWZ1ERUQ2&t=ffffffffbec1863d": {
+      "bytes": 102799,
+      "path": "ScriptResource.axd.q-cc2cd6d28bee.js",
+      "sha256": "5b37b3a0adc9a210cf2bdb983cf4c34b05098d36708bd0111a1d7816ec3b57a0"
+    },
+    "https://www.terna.it/ScriptResource.axd?d=dwY9oWetJoI0rSSk0Z3kpX3aIdX7i2HqCLR6nYZ9UYo1oF4ltQlntzwSuCI-WV_b0uTHCF2pl0PxN6l9it_1Lxly8gOT-OKsrcZrfh8d7FKbOU27jLgDN_VrIOwsmLKmGUDafuAATXsKLO7Q0&t=ffffffffbec1863d": {
+      "bytes": 40359,
+      "path": "ScriptResource.axd.q-a358714c794c.js",
+      "sha256": "5d7b77c6dcb1a4c4d84d2c24e01fd79f2ba4d2d78cb9f350f7652f6eaff7af89"
+    },
+    "https://www.terna.it/WebResource.axd?d=pynGkmcFUV3FsoqFqfdH9kX3G5cd4wRBf1CNAuxQLHKBqt0akD4YIhSfb5g1&t=639190905332169432": {
+      "bytes": 22483,
+      "path": "WebResource.axd.q-956d3dc31725.js",
+      "sha256": "56bd633015e1f3fc577c34202c0e91afa7a72435e7d8d8316751121321bfc56b"
+    },
+    "https://www.terna.it/images/InstallWizardBG.png": {
+      "bytes": 1748,
+      "path": "images/InstallWizardBG.png",
+      "sha256": "2259f63679e54669d495f3c7220881149a1692fe36eb5e04830c699a579a1adf"
+    },
+    "https://www.terna.it/images/checkbox.png": {
+      "bytes": 1876,
+      "path": "images/checkbox.png",
+      "sha256": "752261f7431bfa5a2ec576d8e5865eafff56409964b4e1f89f89557953c5fe0d"
+    },
+    "https://www.terna.it/images/closeBtn.png": {
+      "bytes": 992,
+      "path": "images/closeBtn.png",
+      "sha256": "390eb0f6890a967c3cf45143b044fc9c7b52fdf787c7c6abae3b0bd932807ba1"
+    },
+    "https://www.terna.it/images/dnnSpinnerDownArrow.png": {
+      "bytes": 973,
+      "path": "images/dnnSpinnerDownArrow.png",
+      "sha256": "dbd929c0097dfa91558f2826a599792e193c29fb88dba2a7b1b6d4c5b5acf695"
+    },
+    "https://www.terna.it/images/dnnSpinnerUpArrow.png": {
+      "bytes": 971,
+      "path": "images/dnnSpinnerUpArrow.png",
+      "sha256": "a7e6bacc5b4144019162c8b85d1002fd26895192c7504e463c2836a5c95c8bb7"
+    },
+    "https://www.terna.it/images/dnnTagClose.png": {
+      "bytes": 1027,
+      "path": "images/dnnTagClose.png",
+      "sha256": "0e7a886456c62d4196232599c291f5dcc1395dc9353605feccacf4f390538f4b"
+    },
+    "https://www.terna.it/images/down-icn.png": {
+      "bytes": 436,
+      "path": "images/down-icn.png",
+      "sha256": "144a317bb0ad560584e072800a30b4591103e593a6b94184b4a7cc0e4860a42d"
+    },
+    "https://www.terna.it/images/eip_edit.png": {
+      "bytes": 393,
+      "path": "images/eip_edit.png",
+      "sha256": "c1496e2610141eb7606fadf22c8b507e4bf6685736e8bd6d04fe3fc01352793b"
+    },
+    "https://www.terna.it/images/eip_save.png": {
+      "bytes": 230,
+      "path": "images/eip_save.png",
+      "sha256": "5e6e7bf31d60bb4f25555c9de5e30e768dff96a00173438d7dd86f389d378f60"
+    },
+    "https://www.terna.it/images/eip_title_cancel.png": {
+      "bytes": 392,
+      "path": "images/eip_title_cancel.png",
+      "sha256": "60e4c78dfa0f0cd14234489bad609a01efc92acce46e0bf0dfc724c78a349a6c"
+    },
+    "https://www.terna.it/images/eip_title_save.png": {
+      "bytes": 260,
+      "path": "images/eip_title_save.png",
+      "sha256": "1f3810227d050258ab06f18b48fd10e0958e4f3e1078fad36974559101b9096b"
+    },
+    "https://www.terna.it/images/eip_toolbar.png": {
+      "bytes": 1504,
+      "path": "images/eip_toolbar.png",
+      "sha256": "a13aadd1e563b90196faecd094ba16bfaea73b296a2ee76e4a42bbf68415e962"
+    },
+    "https://www.terna.it/images/helpI-icn-grey.png": {
+      "bytes": 1105,
+      "path": "images/helpI-icn-grey.png",
+      "sha256": "6dce62d2e1709ae07ae75f6116d5ea7b1d2c7d16dc994ef1e58961c46fbf9e34"
+    },
+    "https://www.terna.it/images/loading.gif": {
+      "bytes": 5375,
+      "path": "images/loading.gif",
+      "sha256": "a0ac8c1e2cda17ee1ed5f0c1a25695f1ab9685deec8a4ae213da3fb67a156531"
+    },
+    "https://www.terna.it/images/modal-resize-icn.png": {
+      "bytes": 1224,
+      "path": "images/modal-resize-icn.png",
+      "sha256": "5ac464f95683b92d356361cc91215a0554f49abbd1aed2d9b0967e254ead4103"
+    },
+    "https://www.terna.it/images/pin-icn.png": {
+      "bytes": 297,
+      "path": "images/pin-icn.png",
+      "sha256": "1ab5f0d74b3df5e3962899f4a3edfb362ad2ee9f4329a662b024a26a8b52fab4"
+    },
+    "https://www.terna.it/images/radiobutton.png": {
+      "bytes": 2465,
+      "path": "images/radiobutton.png",
+      "sha256": "676d214ae36dce0c62da46c4e1fc21a783b95162ac662330552789ba3d2b0c71"
+    },
+    "https://www.terna.it/images/resizeBtn.png": {
+      "bytes": 1001,
+      "path": "images/resizeBtn.png",
+      "sha256": "6176721b274642502a3a54bd138d1f9dda658163a07d590ffe548f8c5351aac5"
+    },
+    "https://www.terna.it/images/search/searchButton.png": {
+      "bytes": 405,
+      "path": "images/search/searchButton.png",
+      "sha256": "c3ddb7670d9a1ab7f785577235b6cdca48ca34f305682390473093b44fdca0cd"
+    },
+    "https://www.terna.it/images/up-icn.png": {
+      "bytes": 442,
+      "path": "images/up-icn.png",
+      "sha256": "2ba6e64aed074628769a7548a8a4851752d96bab41d1b93b5bbb294ab610cdd2"
+    },
+    "https://www.terna.it/ruxitagentjs_ICA7NVfghqrux_10343260715123811.js": {
+      "bytes": 226224,
+      "path": "ruxitagentjs_ICA7NVfghqrux_10343260715123811.js",
+      "sha256": "2a50c4fa6372c8e32ce449e28beab0d6e9638c3a03cdefe97a0643f0672b5034"
+    }
+  },
+  "created_at": "2026-09-08T09:27:10.002486+00:00",
+  "load_chart_references": 3,
+  "origin_ip": "66.22.43.171",
+  "script_count": 13,
+  "source_url": "https://www.terna.it/it",
+  "stylesheet_count": 7,
+  "total_bytes": 7450343,
+  "version": 1
+}

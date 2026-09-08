@@ -1,0 +1,28 @@
+NAME                                                    READY   STATUS    RESTARTS       AGE   IP           NODE             NOMINATED NODE   READINESS GATES
+pod/event-adapter-5d7887696-2v454                       1/1     Running   15 (46h ago)   32d   10.42.0.80   k3s-datacenter   <none>           <none>
+pod/event-adapter-5d7887696-k8bdp                       1/1     Running   15 (46h ago)   32d   10.42.0.74   k3s-datacenter   <none>           <none>
+pod/lambda-helpdesk-ticket-processor-7b49c8c6f9-2pwdv   1/1     Running   15 (46h ago)   32d   10.42.0.69   k3s-datacenter   <none>           <none>
+pod/lambda-orders-7465c7bb9c-8lgg7                      1/1     Running   15 (46h ago)   32d   10.42.0.67   k3s-datacenter   <none>           <none>
+pod/lambda-payments-984bcfd97-zg4mf                     1/1     Running   15 (46h ago)   32d   10.42.0.72   k3s-datacenter   <none>           <none>
+pod/lambda-reports-686fcc7577-chqfm                     1/1     Running   15 (46h ago)   32d   10.42.0.82   k3s-datacenter   <none>           <none>
+
+NAME                                       TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE   SELECTOR
+service/event-adapter                      ClusterIP   10.43.78.191    <none>        8080/TCP   32d   app.kubernetes.io/name=event-adapter
+service/lambda-helpdesk-ticket-processor   ClusterIP   10.43.67.176    <none>        8080/TCP   32d   app.kubernetes.io/name=lambda-helpdesk-ticket-processor
+service/lambda-orders                      ClusterIP   10.43.81.254    <none>        8080/TCP   32d   app.kubernetes.io/name=lambda-orders
+service/lambda-payments                    ClusterIP   10.43.121.166   <none>        8080/TCP   32d   app.kubernetes.io/name=lambda-payments
+service/lambda-reports                     ClusterIP   10.43.55.72     <none>        8080/TCP   32d   app.kubernetes.io/name=lambda-reports
+
+NAME                                               READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS      IMAGES                                 SELECTOR
+deployment.apps/event-adapter                      2/2     2            2           32d   event-adapter   reverse-dr/event-adapter:latest        app.kubernetes.io/name=event-adapter
+deployment.apps/lambda-helpdesk-ticket-processor   1/1     1            1           32d   runtime         reverse-dr/lambda-runtime:python3.11   app.kubernetes.io/name=lambda-helpdesk-ticket-processor
+deployment.apps/lambda-orders                      1/1     1            1           32d   runtime         reverse-dr/lambda-runtime:python3.11   app.kubernetes.io/name=lambda-orders
+deployment.apps/lambda-payments                    1/1     1            1           32d   runtime         reverse-dr/lambda-runtime:python3.11   app.kubernetes.io/name=lambda-payments
+deployment.apps/lambda-reports                     1/1     1            1           32d   runtime         reverse-dr/lambda-runtime:python3.11   app.kubernetes.io/name=lambda-reports
+
+NAME                                                          DESIRED   CURRENT   READY   AGE   CONTAINERS      IMAGES                                 SELECTOR
+replicaset.apps/event-adapter-5d7887696                       2         2         2       32d   event-adapter   reverse-dr/event-adapter:latest        app.kubernetes.io/name=event-adapter,pod-template-hash=5d7887696
+replicaset.apps/lambda-helpdesk-ticket-processor-7b49c8c6f9   1         1         1       32d   runtime         reverse-dr/lambda-runtime:python3.11   app.kubernetes.io/name=lambda-helpdesk-ticket-processor,pod-template-hash=7b49c8c6f9
+replicaset.apps/lambda-orders-7465c7bb9c                      1         1         1       32d   runtime         reverse-dr/lambda-runtime:python3.11   app.kubernetes.io/name=lambda-orders,pod-template-hash=7465c7bb9c
+replicaset.apps/lambda-payments-984bcfd97                     1         1         1       32d   runtime         reverse-dr/lambda-runtime:python3.11   app.kubernetes.io/name=lambda-payments,pod-template-hash=984bcfd97
+replicaset.apps/lambda-reports-686fcc7577                     1         1         1       32d   runtime         reverse-dr/lambda-runtime:python3.11   app.kubernetes.io/name=lambda-reports,pod-template-hash=686fcc7577

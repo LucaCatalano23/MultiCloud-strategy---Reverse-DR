@@ -1,0 +1,2 @@
+metric,recorded_at,duration_seconds,detail
+backup.last_success,2026-09-08 07:56:06.61116+00,,"{""site"": ""aws-primary"", ""object"": ""s3://reverse-dr-poc-backup-559672250868-eu-south-1/postgres/20260908T075601Z.dump""}"

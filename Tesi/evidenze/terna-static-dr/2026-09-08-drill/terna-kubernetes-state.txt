@@ -1,0 +1,23 @@
+NAME                                    READY   STATUS    RESTARTS      AGE   IP           NODE             NOMINATED NODE   READINESS GATES
+pod/terna-static-web-5cd48699db-ghvs4   1/1     Running   7 (47h ago)   14d   10.42.0.87   k3s-datacenter   <none>           <none>
+
+NAME                       TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)   AGE   SELECTOR
+service/terna-static-web   ClusterIP   10.43.94.47   <none>        80/TCP    19d   app=terna-static-web
+
+NAME                               READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS   IMAGES              SELECTOR
+deployment.apps/terna-static-web   1/1     1            1           19d   static-web   nginx:1.27-alpine   app=terna-static-web
+
+NAME                                          DESIRED   CURRENT   READY   AGE   CONTAINERS                 IMAGES                          SELECTOR
+replicaset.apps/terna-static-web-5769b6bdb9   0         0         0       18d   static-web                 nginx:1.27-alpine               app=terna-static-web,pod-template-hash=5769b6bdb9
+replicaset.apps/terna-static-web-5cd48699db   1         1         1       14d   static-web                 nginx:1.27-alpine               app=terna-static-web,pod-template-hash=5cd48699db
+replicaset.apps/terna-static-web-5d5955cc4    0         0         0       18d   static-web                 nginx:1.27-alpine               app=terna-static-web,pod-template-hash=5d5955cc4
+replicaset.apps/terna-static-web-5fbd5c48fc   0         0         0       14d   static-web                 nginx:1.27-alpine               app=terna-static-web,pod-template-hash=5fbd5c48fc
+replicaset.apps/terna-static-web-654688d655   0         0         0       19d   static-mirror,static-web   alpine:3.20,nginx:1.27-alpine   app=terna-static-web,pod-template-hash=654688d655
+replicaset.apps/terna-static-web-69d558c8c9   0         0         0       18d   static-web                 nginx:1.27-alpine               app=terna-static-web,pod-template-hash=69d558c8c9
+replicaset.apps/terna-static-web-6d9697b8bf   0         0         0       18d   static-web                 nginx:1.27-alpine               app=terna-static-web,pod-template-hash=6d9697b8bf
+replicaset.apps/terna-static-web-95b578fd5    0         0         0       15d   static-web                 nginx:1.27-alpine               app=terna-static-web,pod-template-hash=95b578fd5
+replicaset.apps/terna-static-web-c4df8d485    0         0         0       14d   static-web                 nginx:1.27-alpine               app=terna-static-web,pod-template-hash=c4df8d485
+replicaset.apps/terna-static-web-fc69d945d    0         0         0       19d   static-mirror,static-web   alpine:3.20,nginx:1.27-alpine   app=terna-static-web,pod-template-hash=fc69d945d
+
+NAME                                         CLASS     HOSTS                   ADDRESS      PORTS   AGE
+ingress.networking.k8s.io/terna-static-web   traefik   terna.it,www.terna.it   10.10.3.10   80      19d

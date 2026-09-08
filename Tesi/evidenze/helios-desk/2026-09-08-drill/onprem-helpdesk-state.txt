@@ -1,0 +1,11 @@
+NAME                           READY   STATUS    RESTARTS       AGE   IP           NODE             NOMINATED NODE   READINESS GATES
+pod/postgres-fd5f7656f-4vfql   1/1     Running   15 (46h ago)   32d   10.42.0.73   k3s-datacenter   <none>           <none>
+
+NAME               TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)    AGE   SELECTOR
+service/postgres   ClusterIP   10.43.239.14   <none>        5432/TCP   32d   app=postgres
+
+NAME                       READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS   IMAGES               SELECTOR
+deployment.apps/postgres   1/1     1            1           32d   postgres     postgres:16-alpine   app=postgres
+
+NAME                                 DESIRED   CURRENT   READY   AGE   CONTAINERS   IMAGES               SELECTOR
+replicaset.apps/postgres-fd5f7656f   1         1         1       32d   postgres     postgres:16-alpine   app=postgres,pod-template-hash=fd5f7656f
