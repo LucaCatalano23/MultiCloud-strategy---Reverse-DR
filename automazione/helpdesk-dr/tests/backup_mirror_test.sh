@@ -35,7 +35,9 @@ cat >"${bin_dir}/aws" <<'AWS'
 #!/usr/bin/env bash
 set -eu
 [ "${FAKE_S3_FAIL:-0}" = 1 ] && exit 1
-if [ "${1:-}" = "--region" ]; then shift 2; fi
+# Salta le opzioni globali in testa (--region X, --cli-connect-timeout X, ...)
+# fino al comando di servizio `s3`.
+while [ "$#" -gt 0 ] && [ "${1}" != "s3" ]; do shift; done
 case "${1:-} ${2:-}" in
   "s3 ls")
     for f in "${FAKE_S3_DIR}"/*; do

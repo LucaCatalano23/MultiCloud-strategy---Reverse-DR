@@ -316,9 +316,42 @@ onprem-helpdesk IN A ${ONPREM_K3S_IP}
 EOF
 }
 
+is_valid_ipv4_address() {
+  local address="$1"
+  local -a octets
+  local octet
+
+  [[ "${address}" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || return 1
+  IFS='.' read -r -a octets <<<"${address}"
+  for octet in "${octets[@]}"; do
+    [ "${octet}" -le 255 ] || return 1
+  done
+}
+
+normalize_dns_hostname() {
+  local hostname="$1"
+  local normalized
+
+  normalized="${hostname%.}"
+  if ! [[ "${normalized}" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$ ]]; then
+    echo 'DNS target must be a valid fully-qualified hostname.' >&2
+    return 1
+  fi
+  printf '%s.\n' "${normalized}"
+}
+
 render_helpdesk_dns_zone() {
-  local target_ip="$1"
+  local target="$1"
+  local normalized_target
+  local record_name="${HELPDESK_DNS_RECORD_NAME:-${HELPDESK_FQDN}}"
   local serial
+
+  if ! [[ "${record_name}" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$ ]]; then
+    echo 'Helpdesk DNS record name must be a valid fully-qualified hostname.' >&2
+    return 1
+  fi
+  normalized_target="$(normalize_dns_hostname "${target}")" || return 1
+  target="${normalized_target}"
   serial="$(date +%s)"
   cat <<EOF
 \$TTL 30
@@ -326,12 +359,22 @@ render_helpdesk_dns_zone() {
   ${serial} 30 15 604800 30
 )
 @ IN NS server-dns.${LAB_DOMAIN}.
-@ IN A ${target_ip}
+${record_name} IN CNAME ${target}
 EOF
 }
 
+# Il target cloud reale e' il DNS name dell'ALB, non uno dei suoi IP: un ALB
+# ruota gli IP senza preavviso. Il fallback CNAME conserva cloud-k3s simulato.
+render_primary_helpdesk_dns_zone() {
+  render_helpdesk_dns_zone "${CLOUD_DNS_TARGET:-${CLOUD_FALLBACK_DNS_TARGET}}"
+}
+
+render_onprem_helpdesk_dns_zone() {
+  render_helpdesk_dns_zone "${ONPREM_DNS_TARGET}"
+}
+
 set_helpdesk_dns() {
-  local target_ip="$1"
+  local zone_renderer="$1"
   local dr_runtime_dir
   local lab_zone_file
   local app_zone_file
@@ -339,19 +382,25 @@ set_helpdesk_dns() {
   lab_zone_file="${dr_runtime_dir}/lab.zone.$$"
   app_zone_file="${dr_runtime_dir}/helpdesk.zone.$$"
   render_lab_dns_zone >"${lab_zone_file}"
-  render_helpdesk_dns_zone "${target_ip}" >"${app_zone_file}"
+  "${zone_renderer}" >"${app_zone_file}"
   exec_dns bash -lc "grep -q 'zone \"${LAB_DOMAIN}\"' /etc/bind/named.conf.local || cat >>/etc/bind/named.conf.local <<'EOF'
 zone \"${LAB_DOMAIN}\" {
   type master;
   file \"/etc/bind/db.${LAB_DOMAIN}\";
 };
 EOF"
-  exec_dns bash -lc "grep -q 'zone \"${HELPDESK_DNS_ZONE}\"' /etc/bind/named.conf.local || cat >>/etc/bind/named.conf.local <<'EOF'
+  # Le vecchie zone autorevoli (host-specific e terna.it) intercettavano anche
+  # sts.terna.it. RPZ e' un override preciso della sola risposta Helios.
+  exec_dns bash -lc "sed -i '/^zone \"${HELPDESK_FQDN}\" {/,/^};$/d; /^zone \"terna.it\" {/,/^};$/d' /etc/bind/named.conf.local; rm -f /etc/bind/db.${HELPDESK_FQDN} /etc/bind/db.terna.it; (grep -q 'zone \"${HELPDESK_DNS_ZONE}\"' /etc/bind/named.conf.local || grep -q 'zone \"${HELPDESK_DNS_ZONE}\"' /etc/bind/named.conf.d/lxc-lab.conf 2>/dev/null) || cat >>/etc/bind/named.conf.local <<'EOF'
 zone \"${HELPDESK_DNS_ZONE}\" {
   type master;
   file \"/etc/bind/db.${HELPDESK_DNS_ZONE}\";
 };
 EOF"
+  exec_dns bash -lc "install -d -m 0755 /etc/bind/named.conf.d; cat >/etc/bind/named.conf.d/helios-rpz-options.conf <<'EOF'
+response-policy { zone \"${HELPDESK_DNS_ZONE}\"; };
+EOF
+grep -Fqx '  include \"/etc/bind/named.conf.d/helios-rpz-options.conf\";' /etc/bind/named.conf.options || sed -i '/^};$/i\\  include \"/etc/bind/named.conf.d/helios-rpz-options.conf\";' /etc/bind/named.conf.options"
   lxc_retry file push "${lab_zone_file}" "${DNS_SERVER_NAME}/etc/bind/db.${LAB_DOMAIN}"
   lxc_retry file push "${app_zone_file}" "${DNS_SERVER_NAME}/etc/bind/db.${HELPDESK_DNS_ZONE}"
   exec_dns named-checkconf
@@ -359,6 +408,14 @@ EOF"
   exec_dns named-checkzone "${HELPDESK_DNS_ZONE}" "/etc/bind/db.${HELPDESK_DNS_ZONE}"
   exec_dns systemctl restart named
   rm -f "${lab_zone_file}" "${app_zone_file}"
+}
+
+set_primary_helpdesk_dns() {
+  set_helpdesk_dns render_primary_helpdesk_dns_zone
+}
+
+set_onprem_helpdesk_dns() {
+  set_helpdesk_dns render_onprem_helpdesk_dns_zone
 }
 
 cloud_ready_lxc() {

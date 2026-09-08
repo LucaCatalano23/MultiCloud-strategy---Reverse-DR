@@ -1,0 +1,22 @@
+[Unit]
+Description=Build and publish the public Terna static asset bundle
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+TimeoutStartSec=15min
+Environment=TERNA_PUBLIC_DNS_RESOLVER=10.10.4.2
+Environment=HOME=/run/terna-static-dr
+Environment=XDG_CONFIG_HOME=/run/terna-static-dr
+Environment=XDG_CACHE_HOME=/run/terna-static-dr
+ExecStart=/usr/local/lib/terna-static-dr/terna-static-origin-fetch.sh
+User=root
+Group=root
+UMask=0077
+RuntimeDirectory=terna-static-dr
+RuntimeDirectoryMode=0750
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/terna-static-dr/static /run/terna-static-dr

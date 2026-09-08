@@ -8,6 +8,8 @@ __pycache__/
 node_modules/
 dist/
 coverage/
+.coverage
+*.bkp
 .vite/
 *.tsbuildinfo
 .pytest_cache/
@@ -27,5 +29,5 @@ automazione/helpdesk-dr/.state/
 automazione/helpdesk-dr/config.env
 automazione/helpdesk-dr/.restore.*
 automazione/helpdesk-dr/.helpdesk.zone
+automazione/terna-static-dr/config.lxc-lab.env
 *.zip
-

@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: terna-static-web
+  namespace: terna-static-dr
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: terna.it
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: terna-static-web, port: { number: 80 } }
+    - host: www.terna.it
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: terna-static-web, port: { number: 80 } }

@@ -25,7 +25,45 @@ fi
 # interrupted" e i retry ripeterebbero lo stesso errore su uno stato rotto.
 exec_ansible dpkg --configure -a
 exec_ansible apt-get update
-exec_ansible env DEBIAN_FRONTEND=noninteractive apt-get install -y ansible-core git ca-certificates curl gzip snapd unzip awscli
+exec_ansible bash -lc '
+  set -euo pipefail
+
+  if command -v aws >/dev/null 2>&1 &&
+     aws --version 2>&1 | grep -q "^aws-cli/2\."; then
+    echo "AWS CLI v2 already installed: $(aws --version 2>&1)"
+    exit 0
+  fi
+
+  arch="$(uname -m)"
+  case "${arch}" in
+    x86_64)
+      aws_arch="x86_64"
+      ;;
+    aarch64|arm64)
+      aws_arch="aarch64"
+      ;;
+    *)
+      echo "Unsupported architecture for AWS CLI: ${arch}" >&2
+      exit 1
+      ;;
+  esac
+
+  tmp_dir="$(mktemp -d)"
+  trap '"'"'rm -rf "${tmp_dir}"'"'"' EXIT
+
+  cd "${tmp_dir}"
+  curl -fsSLo awscliv2.zip \
+    "https://awscli.amazonaws.com/awscli-exe-linux-${aws_arch}.zip"
+  unzip -q awscliv2.zip
+
+  if [ -d /usr/local/aws-cli ]; then
+    ./aws/install --update
+  else
+    ./aws/install
+  fi
+
+  aws --version
+'
 
 lxd_snap_state="$(exec_ansible sh -lc 'if snap list lxd >/dev/null 2>&1; then printf ready; fi')"
 if [ "${lxd_snap_state}" != "ready" ]; then

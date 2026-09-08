@@ -48,9 +48,7 @@ Apply the Kubernetes data plane:
 ```powershell
 kubectl apply -k automazione\lambda-dr\kubernetes
 kubectl -n lambda-dr rollout status deployment/event-adapter
-kubectl -n lambda-dr rollout status deployment/lambda-orders
-kubectl -n lambda-dr rollout status deployment/lambda-payments
-kubectl -n lambda-dr rollout status deployment/lambda-reports
+kubectl -n lambda-dr rollout status deployment/lambda-helpdesk-ticket-processor
 ```
 
 Expose the adapter locally:
@@ -59,12 +57,10 @@ Expose the adapter locally:
 kubectl -n lambda-dr port-forward svc/event-adapter 8088:8080
 ```
 
-Invoke different functions without restarting the adapter:
+Invoke the function through the adapter:
 
 ```powershell
-Invoke-RestMethod -Method Post -Uri "http://localhost:8088/functions/orders/orders/123?source=dr" -Body '{"ok":true}' -ContentType "application/json"
-Invoke-RestMethod -Method Post -Uri "http://localhost:8088/functions/payments/payments/456" -Body '{"amount":42}' -ContentType "application/json"
-Invoke-RestMethod -Method Post -Uri "http://localhost:8088/functions/reports/reports/2026?format=summary" -Body '{"year":2026}' -ContentType "application/json"
+Invoke-RestMethod -Method Post -Uri "http://localhost:8088/2015-03-31/functions/function/invocations" -Body '{"ok":true}' -ContentType "application/json"
 ```
 
 To add another function, create a new `Deployment` and `Service` named `lambda-<function-name>` in the `lambda-dr` namespace. The adapter resolves it through:
@@ -74,5 +70,3 @@ http://lambda-{function_name}.lambda-dr.svc.cluster.local:8080
 ```
 
 This keeps the Lambda platform online while onboarding new user code as isolated runtime pods.
-
-For a step-by-step user-facing workflow to add a new function, see `GUIDA_NUOVA_FUNZIONE.md`.

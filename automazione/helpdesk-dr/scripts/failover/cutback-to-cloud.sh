@@ -24,7 +24,7 @@ if ! cloud_ready; then
   exit 1
 fi
 
-set_helpdesk_dns "${CLOUD_K3S_IP}"
+set_primary_helpdesk_dns
 if bash "${SCRIPT_DIR}/demote-onprem.sh"; then
   write_dr_state "primary"
 else
@@ -33,4 +33,4 @@ else
   exit 1
 fi
 
-echo "Cutback complete. ${HELPDESK_FQDN} -> ${CLOUD_K3S_IP}"
+echo "Cutback complete. ${HELPDESK_FQDN} -> ${CLOUD_DNS_TARGET:-${CLOUD_K3S_IP}}"

@@ -157,15 +157,18 @@ Inserisci il risultato nel `config.env` locale distribuito ad `ansible-node`:
 ```bash
 CLOUD_PROBE_MODE=https
 CLOUD_TARGET_HOST=k8s-helios-xxxxxxxx.eu-west-1.elb.amazonaws.com
+CLOUD_DNS_TARGET=k8s-helios-xxxxxxxx.eu-west-1.elb.amazonaws.com
 DR_AUTO_FAILOVER_ENABLED=true
 ```
 
 Il controller usa `curl --connect-to`: apre la connessione verso il DNS name
 dell'ALB, ma conserva `heliospoc.terna.it` come Host e TLS SNI. Cosi' il probe
 continua a osservare direttamente AWS anche quando il DNS canonico punta gia'
-al DR. Per il traffico utente configura `heliospoc.terna.it` come CNAME verso
-l'ALB se e' un record nella zona padre `ggg.it`, oppure come Route 53 Alias A;
-non configurare mai un A record con gli IP correnti dell'ALB.
+al DR. `CLOUD_DNS_TARGET` usa lo stesso DNS name in una Response Policy Zone
+(RPZ) di Bind: in stato `primary` reindirizza solo `heliospoc.terna.it` verso
+l'ALB; in stato `dr` lo reindirizza al nome on-prem. In questo modo Bind non
+diventa autorevole per `terna.it` e non interrompe `sts.terna.it` durante il
+login Entra ID. Non configurare mai un A record con gli IP correnti dell'ALB.
 
 ### Senza ACM pubblico: self-signed HTTPS (preferito)
 

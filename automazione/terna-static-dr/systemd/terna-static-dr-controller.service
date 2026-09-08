@@ -1,0 +1,25 @@
+[Unit]
+Description=Terna static DR controller for the LXC lab DNS
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/terna-static-dr
+Environment=TERNA_DR_CONFIG_FILE=/etc/terna-static-dr/config.env
+Environment=HOME=/var/lib/terna-static-dr
+Environment=ANSIBLE_LOCAL_TEMP=/var/lib/terna-static-dr/.ansible/tmp
+Environment=ANSIBLE_REMOTE_TEMP=/var/lib/terna-static-dr/.ansible/tmp
+ExecStart=/usr/bin/env bash /opt/terna-static-dr/bin/lxc-lab-controller.sh watch
+Restart=always
+RestartSec=10s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/terna-static-dr /var/snap/lxd/common/lxd
+
+[Install]
+WantedBy=multi-user.target

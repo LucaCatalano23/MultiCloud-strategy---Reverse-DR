@@ -39,6 +39,10 @@ Assert-Contains $defaults 'CLOUD_PROBE_MODE="lxc-k3s"' `
     'The lab must keep an explicit LXC probe mode.'
 Assert-Contains $defaults 'CLOUD_TARGET_HOST=""' `
     'A real cloud deployment must expose a separate ALB target hostname.'
+Assert-Contains $defaults 'CLOUD_DNS_TARGET=""' `
+    'A real cloud deployment must expose a stable ALB DNS target for primary DNS cutback.'
+Assert-Contains $defaults 'HELPDESK_DNS_ZONE="rpz-helios"' `
+    'Helios DNS must use an exact RPZ override instead of becoming authoritative for terna.it.'
 Assert-Contains $defaults 'CLOUD_HEALTHCHECK_PATH="/health/ready"' `
     'The ALB probe must use the BFF aggregate readiness endpoint.'
 Assert-Contains $defaults 'DR_CONTROLLER_RETRY_COOLDOWN_SECONDS=' `
@@ -72,6 +76,12 @@ Assert-Contains $bootstrap 'helpdesk-dr-backup-mirror.timer' `
     'The coordinator bootstrap must install the backup mirror timer.'
 
 $library = Read-RequiredFile 'scripts/common/lib.sh'
+Assert-Contains $library 'render_primary_helpdesk_dns_zone' `
+    'Primary DNS must publish the ALB hostname as a CNAME, never a mutable ALB IP.'
+Assert-Contains $library 'render_onprem_helpdesk_dns_zone' `
+    'DR DNS must redirect to the on-prem ingress through the exact response policy.'
+Assert-Contains $library 'response-policy' `
+    'The lab DNS must only override the Helios response through BIND RPZ.'
 Assert-Contains $library 'cloud_ready_https' 'The DR library must support a real HTTPS cloud probe.'
 Assert-Contains $library 'cloud_ready_http' `
     'The DR library must support a plain-HTTP probe for an ALB without ACM.'
@@ -136,9 +146,23 @@ Assert-Contains $demoter 'Demotion verification failed' `
 Assert-Contains $demoter 'wait_for_deployment_stopped' `
     'Cutback must wait until all on-prem application pods have stopped.'
 
+$cutback = Read-RequiredFile 'scripts/failover/cutback-to-cloud.sh'
+Assert-Contains $cutback 'set_primary_helpdesk_dns' `
+    'Cutback must restore the authoritative DNS record to the configured primary target.'
+
+$promoter = Read-RequiredFile 'scripts/failover/promote-onprem.sh'
+Assert-Contains $promoter 'set_onprem_helpdesk_dns' `
+    'Promotion must switch the authoritative DNS record to the on-prem ingress only after readiness.'
+
 $standbyDeploy = Read-RequiredFile 'scripts/deploy/deploy-onprem-standby.sh'
 Assert-Contains $standbyDeploy 'failover.lock' `
     'Standby deployment must not race with promotion or cutback state transitions.'
+Assert-Contains $standbyDeploy 'set_primary_helpdesk_dns' `
+    'Standby deployment must initialize authoritative DNS to the primary target.'
+Assert-Contains $standbyDeploy 'migrate_legacy_literal_environment' `
+    'Standby deployment must migrate legacy literal environment values before applying ConfigMap references.'
+Assert-Contains $standbyDeploy 'set env "deployment/${deployment}"' `
+    'Migration must remove conflicting literal environment entries through the Kubernetes API.'
 
 $runbook = Read-RequiredFile 'README.md'
 Assert-Contains $runbook "status.loadBalancer.ingress[0].hostname" `

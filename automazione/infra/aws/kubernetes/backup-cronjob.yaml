@@ -81,6 +81,11 @@ spec:
                 - configMapRef:
                     name: helios-aws-config
               env:
+                # aws-cli scrive in ~/.aws (config/cache) ma la root fs e'
+                # read-only: HOME punta alla emptyDir scrivibile /tmp, altrimenti
+                # l'upload S3 fallisce con "Read-only file system: .../.aws".
+                - name: HOME
+                  value: /tmp
                 - name: DATABASE_URL
                   valueFrom:
                     secretKeyRef:

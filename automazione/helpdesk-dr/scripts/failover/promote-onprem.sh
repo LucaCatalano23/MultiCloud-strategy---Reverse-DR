@@ -83,6 +83,6 @@ for workload in "${helios_workloads[@]}"; do
 done
 
 onprem_ready
-set_helpdesk_dns "${ONPREM_K3S_IP}"
+set_onprem_helpdesk_dns
 
 echo "On-prem promoted. ${HELPDESK_FQDN} -> ${ONPREM_K3S_IP}"

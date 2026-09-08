@@ -13,7 +13,7 @@ Questo overlay aggiunge al cluster k3s on-prem **esistente** un data plane Helio
 - Il browser parla soltanto con React e BFF sullo stesso origin. Ticket e automation sono `ClusterIP`; nessun token viene consegnato al frontend.
 - Keycloak usa l'immagine ufficiale in production mode, TLS terminato da Traefik, import di realm al primo avvio e storage PostgreSQL persistente. `KC_CACHE=local` e intenzionale per il cluster k3s a nodo singolo; prima di scalare Keycloak a piu repliche va introdotta una configurazione cache/HA supportata.
 
-Il realm importato a startup viene ignorato quando il realm esiste gia. Questo rende i restart idempotenti e impedisce di sovrascrivere utenti operativi, ma significa che una modifica successiva del template deve essere applicata con una migrazione Keycloak controllata, non confidando in un restart.
+Il realm importato a startup viene ignorato quando il realm esiste gia. Questo rende i restart idempotenti e impedisce di sovrascrivere utenti operativi, ma significa che una modifica successiva del template deve essere applicata con una migrazione Keycloak controllata, non confidando in un restart. Il wrapper `scripts/provision-dr-operator.sh` svolge questa migrazione per il contratto di autorizzazione: aggiorna il provisioner montato nel Job, mantiene `fullScopeAllowed=false`, riconcilia il client scope `roles`, il mapper e i tre role-scope mapping di `helios-bff`, quindi genera esempi di ID token e access token e fallisce se i ruoli non sono presenti.
 
 ## Contratto Entra ID / Keycloak
 
@@ -99,6 +99,28 @@ Il realm non contiene utenti seed. `scripts/provision-dr-operator.sh` avvia un J
 3. assegna in modo convergente `tickets.read`, `tickets.write` e `automation.execute` sul client `helios-api`.
 
 Una nuova esecuzione riconcilia lo stesso utente e non crea duplicati. Un broker Keycloak verso Entra puo semplificare il login quando Internet e Entra sono disponibili, ma **non** garantisce autenticazione durante un'interruzione cloud; per questo la PoC mantiene almeno un'identita locale DR. In produzione e preferibile federare un LDAP/AD on-prem realmente disponibile durante il disastro e mappare i medesimi role/employee ID.
+
+## Recovery e rotazione delle credenziali Keycloak
+
+Se le credenziali amministrative non sono piu' disponibili, **non** cancellare il
+PVC PostgreSQL di Keycloak: eliminerebbe realm, client, ruoli e utenti. Dal nodo
+di controllo LXC, con un token OpenBao amministrativo esportato, esegui:
+
+```bash
+export BAO_TOKEN=<token-openbao-con-permesso-di-scrittura>
+cd automazione/infra/onprem
+bash scripts/reset-keycloak-credentials.sh
+```
+
+Lo script richiede interattivamente la nuova password dell'amministratore
+esistente (lo username deve restare quello dell'account da recuperare) e le
+nuove credenziali dell'operatore DR, senza stamparle. Ferma Keycloak per pochi minuti, crea un
+admin di recovery temporaneo con `kc.sh bootstrap-admin user`, aggiorna OpenBao,
+attende l'effettiva sincronizzazione di External Secrets Operator, cambia la
+password dell'admin preesistente e riconcilia l'operatore. Al termine rimuove
+l'account di recovery. Se fallisce dopo aver creato tale account, conserva il
+Secret di recovery per completare l'intervento manualmente: non rimuoverlo
+finche' non sia ripristinato un accesso amministrativo verificato.
 
 ## Failover Ansible
 

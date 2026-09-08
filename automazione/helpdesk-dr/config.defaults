@@ -1,8 +1,10 @@
 LAB_DOMAIN="azienda.lan"
 HELPDESK_FQDN="heliospoc.terna.it"
-# Zona host-specific split-horizon del lab: non rende BIND autorevole per tutta
-# ggg.it e permette di spostare lo stesso FQDN fra cloud e on-prem.
-HELPDESK_DNS_ZONE="heliospoc.terna.it"
+# RPZ cambia esclusivamente la risposta per HELPDESK_FQDN senza rendere Bind
+# autorevole per terna.it: i domini aziendali come sts.terna.it continuano a
+# essere risolti dai forwarder esterni. Un RPZ usa sempre un'azione CNAME.
+HELPDESK_DNS_ZONE="rpz-helios"
+HELPDESK_DNS_RECORD_NAME="heliospoc.terna.it"
 
 CLOUD_NET="cloud-net"
 CLOUD_NET_CIDR="10.20.0.1/24"
@@ -15,6 +17,15 @@ CLOUD_K3S_IP="10.20.0.10"
 #     esporre l'app su HTTP senza ssl-redirect. Vedi README.md.
 CLOUD_PROBE_MODE="lxc-k3s"
 CLOUD_TARGET_HOST=""
+# Target DNS del sito primario pubblicato dalla zona autorevole del lab. Per
+# AWS reale impostalo al DNS name dell'ALB: Bind rendera' un CNAME, quindi il
+# cambio degli IP dell'ALB non richiede alcun aggiornamento nel laboratorio.
+# Vuoto mantiene la compatibilita' con il cloud-k3s simulato (A CLOUD_K3S_IP).
+CLOUD_DNS_TARGET=""
+# Destinazioni statiche del lab usate come CNAME RPZ durante il DR o nella PoC
+# simulata. In AWS CLOUD_DNS_TARGET sostituisce il primo valore con il DNS ALB.
+CLOUD_FALLBACK_DNS_TARGET="cloud-helpdesk.azienda.lan"
+ONPREM_DNS_TARGET="onprem-helpdesk.azienda.lan"
 # Vuoto = default per schema: 443 in modalita' https, 80 in modalita' http.
 CLOUD_TARGET_PORT=""
 # Solo in modalita' https con cert non attendibile (es. self-signed importato in
@@ -56,6 +67,10 @@ BACKUP_MIRROR_DIR="/srv/helpdesk-dr-mirror"
 BACKUP_S3_BUCKET=""
 # Quanti backup piu' recenti tiene il mirror on-prem; gli altri vengono eliminati.
 BACKUP_MIRROR_RETENTION="2"
+# Addressing style S3 del sync. `path` (s3.<region>.amazonaws.com/<bucket>) perche'
+# nel lab l'edge non raggiunge il virtual-host del bucket (<bucket>.s3...); metti
+# `virtual` in ambienti dove il virtual-host e' raggiungibile.
+BACKUP_S3_ADDRESSING_STYLE="path"
 
 AWS_REGION="eu-west-1"
 HELPDESK_LAMBDA_FUNCTION_NAME="helpdesk-ticket-processor"

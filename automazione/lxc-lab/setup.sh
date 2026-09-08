@@ -135,6 +135,12 @@ init_container() {
   fi
 }
 
+# Machine-readable state avoids locale/case changes in `lxc info` (for example
+# `RUNNING` rather than `Running`) that previously caused a duplicate start.
+instance_running() {
+  [ "$(lxc_retry list "$1" -c s --format csv 2>/dev/null | tr '[:lower:]' '[:upper:]' | tr -d '\r\n')" = "RUNNING" ]
+}
+
 configure_container_runtime() {
   local name="$1"
   local kind="$2"
@@ -146,7 +152,7 @@ configure_container_runtime() {
   if [ "${kind}" = "openwrt-router" ] || [ "${kind}" = "k3s-node" ]; then
     # OpenWrt init scripts touch low-level networking paths that are unreliable
     # in strict unprivileged containers, especially inside WSL-backed LXD.
-    if ! lxc_retry info "${name}" | grep -q 'Status: Running'; then
+    if ! instance_running "${name}"; then
       lxc_retry config set "${name}" security.privileged true
     fi
   fi
@@ -156,9 +162,7 @@ attach_provisioning_nic() {
   local container="$1"
 
   if lxc_retry network show lxdbr0 >/dev/null 2>&1; then
-    if ! lxc_retry config device show "${container}" | grep -q '^eth9:'; then
-      lxc_retry network attach lxdbr0 "${container}" eth9 eth9
-    fi
+    attach_nic "${container}" lxdbr0 eth9
   else
     cat >&2 <<'EOF'
 Missing LXD default network lxdbr0.
@@ -172,7 +176,7 @@ EOF
 remove_provisioning_nic() {
   local container="$1"
 
-  if lxc_retry info "${container}" | grep -q 'Status: Running'; then
+  if instance_running "${container}"; then
     lxc_retry exec "${container}" -- bash -lc '
       rm -f /etc/netplan/99-lxc-provisioning.yaml
       netplan apply >/dev/null 2>&1 || true
@@ -188,17 +192,28 @@ attach_nic() {
   local container="$1"
   local network="$2"
   local device="$3"
-  local address="$4"
+  local address="${4:-}"
+  local current_network=""
+
+  if lxc_retry config device show "${container}" | grep -q "^${device}:"; then
+    current_network="$(lxc_retry config device get "${container}" "${device}" network 2>/dev/null || true)"
+    if [ "${current_network}" != "${network}" ]; then
+      echo "Realigning ${container}/${device}: ${current_network:-unknown} -> ${network}."
+      lxc_retry config device remove "${container}" "${device}"
+    fi
+  fi
 
   if ! lxc_retry config device show "${container}" | grep -q "^${device}:"; then
     lxc_retry network attach "${network}" "${container}" "${device}" "${device}"
   fi
-  lxc_retry config device set "${container}" "${device}" ipv4.address "${address}"
+  if [ -n "${address}" ]; then
+    lxc_retry config device set "${container}" "${device}" ipv4.address "${address}"
+  fi
 }
 
 ensure_started() {
   local container="$1"
-  if ! lxc_retry info "${container}" | grep -q 'Status: Running'; then
+  if ! instance_running "${container}"; then
     if ! lxc_retry start "${container}"; then
       echo "Failed to start ${container}. LXD state follows:" >&2
       lxc_retry info "${container}" --show-log >&2 || true
@@ -315,6 +330,13 @@ configure_ubuntu_host() {
 DNS=${DNS_IP}
 Domains=${LAB_DOMAIN}
 EOF
+    # The lab networks are IPv4-only.  Disabling IPv6 prevents containerd from
+    # stalling on unreachable AAAA records when it pulls images from registries.
+    cat >/etc/sysctl.d/99-lxc-lab-ipv4-only.conf <<EOF
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+EOF
+    sysctl --system >/dev/null || true
     systemctl restart systemd-resolved || true
   "
 }
@@ -363,16 +385,34 @@ options {
   allow-query { any; };
   recursion yes;
   dnssec-validation auto;
-  forwarders { 1.1.1.1; 8.8.8.8; };
+  include "/etc/bind/named.conf.d/helios-rpz-options.conf";
+  // router-edge forwards through the resolver learned on its WAN DHCP lease.
+  // This keeps recursion working on networks that block direct public DNS.
+  forwarders { 10.10.4.2; };
 };
 EOF
 
-  lxc_retry exec server-dns -- bash -lc "cat >/etc/bind/named.conf.local" <<EOF
+  lxc_retry exec server-dns -- install -d -m 0755 /etc/bind/named.conf.d
+  lxc_retry exec server-dns -- bash -lc "cat >/etc/bind/named.conf.d/lxc-lab.conf" <<EOF
 zone "${LAB_DOMAIN}" {
   type master;
   file "/etc/bind/db.${LAB_DOMAIN}";
 };
+zone "rpz-helios" {
+  type master;
+  file "/etc/bind/db.rpz-helios";
+};
 EOF
+  # Older setup versions stored lab.lxc directly in named.conf.local. Remove
+  # only that managed block, preserve application zones such as terna.it, and
+  # include the dedicated infrastructure file exactly once.
+  lxc_retry exec server-dns -- bash -lc '
+    set -euo pipefail
+    touch /etc/bind/named.conf.local
+    sed -i '\''/^zone "lab\.lxc" {/,/^};$/d'\'' /etc/bind/named.conf.local
+    grep -Fqx '\''include "/etc/bind/named.conf.d/lxc-lab.conf";'\'' /etc/bind/named.conf.local \
+      || printf '\''include "/etc/bind/named.conf.d/lxc-lab.conf";\n'\'' >>/etc/bind/named.conf.local
+  '
 
   lxc_retry exec server-dns -- bash -lc "cat >/etc/bind/db.${LAB_DOMAIN}" <<EOF
 \$TTL 300
@@ -394,6 +434,16 @@ vault IN A 10.10.3.80
 git-server IN A 10.10.3.70
 ansible-node IN A 10.10.3.100
 EOF
+  lxc_retry exec server-dns -- bash -lc "cat >/etc/bind/named.conf.d/helios-rpz-options.conf" <<'EOF'
+response-policy { zone "rpz-helios"; };
+EOF
+  lxc_retry exec server-dns -- bash -lc "cat >/etc/bind/db.rpz-helios" <<EOF
+\$TTL 30
+@ IN SOA server-dns.${LAB_DOMAIN}. admin.${LAB_DOMAIN}. (
+  2026090601 30 15 604800 30
+)
+@ IN NS server-dns.${LAB_DOMAIN}.
+EOF
 
   lxc_retry exec server-dns -- named-checkconf
   lxc_retry exec server-dns -- named-checkzone "${LAB_DOMAIN}" "/etc/bind/db.${LAB_DOMAIN}"
@@ -406,6 +456,20 @@ configure_ansible_node() {
   apt_install ansible-node ansible-core git openssh-client dnsutils curl ca-certificates
   configure_ubuntu_host ansible-node
   use_lab_route ansible-node 10.10.3.1
+
+  # Ubuntu 24.04 does not ship an `lxd-client` APT package. Install only the
+  # Snap client, stop its nested daemon, then let Terna reconciliation attach
+  # the host LXD socket through a proxy device.
+  lxc_retry exec ansible-node -- bash -lc '
+    set -euo pipefail
+    if ! snap list lxd >/dev/null 2>&1; then
+      snap install lxd --channel=5.21/stable
+    fi
+    snap stop --disable lxd || true
+    ln -sfn /snap/bin/lxc /usr/local/bin/lxc
+    rm -f /var/snap/lxd/common/lxd/unix.socket
+    install -d -m 0755 /var/snap/lxd/common/lxd
+  '
 
   lxc_retry exec ansible-node -- install -d /etc/ansible
   lxc_retry exec ansible-node -- bash -lc "cat >/etc/ansible/hosts" <<EOF
@@ -440,7 +504,7 @@ configure_basic_ubuntu_nodes() {
     node="${entry%% *}"
     gateway="${entry##* }"
     wait_for_cloud_init "${node}"
-    apt_install "${node}" iproute2 iputils-ping dnsutils curl ca-certificates
+    apt_install "${node}" iproute2 iputils-ping dnsutils curl ca-certificates python3
     configure_ubuntu_host "${node}"
     use_lab_route "${node}" "${gateway}"
   done
@@ -457,7 +521,9 @@ remove_all_provisioning_nics() {
 openwrt_exec() {
   local container="$1"
   shift
-  lxc_retry exec "${container}" -- ash -lc "$*"
+  # A login shell prints the OpenWrt banner on every retry and obscures the
+  # actual failure. No profile state is required for these absolute commands.
+  lxc_retry exec "${container}" -- ash -c "$*"
 }
 
 configure_openwrt_firewall() {
@@ -466,7 +532,15 @@ configure_openwrt_firewall() {
     set -e
     /etc/init.d/firewall stop >/dev/null 2>&1 || true
     /etc/init.d/firewall disable >/dev/null 2>&1 || true
-    sysctl -w net.ipv4.ip_forward=1 >/dev/null
+    command -v nft >/dev/null 2>&1 && nft flush ruleset || true
+    mkdir -p /etc/sysctl.d
+    cat >/etc/sysctl.d/99-lxc-lab-router.conf <<EOF
+net.ipv4.ip_forward=1
+net.ipv4.icmp_echo_ignore_all=0
+net.ipv4.conf.all.rp_filter=0
+net.ipv4.conf.default.rp_filter=0
+EOF
+    sysctl -p /etc/sysctl.d/99-lxc-lab-router.conf >/dev/null
   '
 }
 
@@ -517,7 +591,15 @@ set network.default_dmz.netmask=0.0.0.0
 set network.default_dmz.gateway=10.10.2.4
 commit network
 EOF
-    /etc/init.d/network restart
+    # OpenWrt 24.10 can block in `ubus call network.interface dump` when a
+    # full network restart runs inside LXC/WSL. UCI remains the persistent
+    # source of truth; apply the same state directly for the current boot.
+    ip link set eth0 up
+    ip link set eth1 up
+    ip address replace 10.10.1.1/24 dev eth0
+    ip address replace 10.10.2.2/24 dev eth1
+    ip route replace 10.10.3.0/24 via 10.10.2.3 dev eth1
+    ip route replace default via 10.10.2.4 dev eth1
   '
   configure_openwrt_firewall router-dipendenti
 }
@@ -552,7 +634,12 @@ set network.default_dmz.netmask=0.0.0.0
 set network.default_dmz.gateway=10.10.2.4
 commit network
 EOF
-    /etc/init.d/network restart
+    ip link set eth0 up
+    ip link set eth1 up
+    ip address replace 10.10.3.1/24 dev eth0
+    ip address replace 10.10.2.3/24 dev eth1
+    ip route replace 10.10.1.0/24 via 10.10.2.2 dev eth1
+    ip route replace default via 10.10.2.4 dev eth1
   '
   configure_openwrt_firewall router-datacenter
 }
@@ -592,7 +679,13 @@ set network.default_edge.netmask=0.0.0.0
 set network.default_edge.gateway=10.10.4.2
 commit network
 EOF
-    /etc/init.d/network restart
+    ip link set eth0 up
+    ip link set eth1 up
+    ip address replace 10.10.2.4/24 dev eth0
+    ip address replace 10.10.4.1/24 dev eth1
+    ip route replace 10.10.1.0/24 via 10.10.2.2 dev eth0
+    ip route replace 10.10.3.0/24 via 10.10.2.3 dev eth0
+    ip route replace default via 10.10.4.2 dev eth1
   '
   configure_openwrt_firewall router-dmz
 }
@@ -601,6 +694,9 @@ configure_router_edge() {
   reset_openwrt_network_defaults router-edge
   openwrt_exec router-edge '
     set -e
+    uci -q delete network.route_dipendenti || true
+    uci -q delete network.route_dmz || true
+    uci -q delete network.route_dc || true
     uci batch <<EOF
 set network.transit=interface
 set network.transit.device=eth0
@@ -610,9 +706,56 @@ set network.transit.netmask=255.255.255.0
 set network.wan=interface
 set network.wan.device=eth1
 set network.wan.proto=dhcp
+set network.route_dipendenti=route
+set network.route_dipendenti.interface=transit
+set network.route_dipendenti.target=10.10.1.0
+set network.route_dipendenti.netmask=255.255.255.0
+set network.route_dipendenti.gateway=10.10.4.1
+set network.route_dmz=route
+set network.route_dmz.interface=transit
+set network.route_dmz.target=10.10.2.0
+set network.route_dmz.netmask=255.255.255.0
+set network.route_dmz.gateway=10.10.4.1
+set network.route_dc=route
+set network.route_dc.interface=transit
+set network.route_dc.target=10.10.3.0
+set network.route_dc.netmask=255.255.255.0
+set network.route_dc.gateway=10.10.4.1
 commit network
 EOF
-    /etc/init.d/network restart
+    ip link set eth0 up
+    ip link set eth1 up
+    ip address replace 10.10.4.2/24 dev eth0
+    ip route replace 10.10.1.0/24 via 10.10.4.1 dev eth0
+    ip route replace 10.10.2.0/24 via 10.10.4.1 dev eth0
+    ip route replace 10.10.3.0/24 via 10.10.4.1 dev eth0
+    ifup wan >/dev/null 2>&1 || true
+
+    # dnsmasq must serve the isolated lab on the transit interface. Without an
+    # explicit interface OpenWrt may answer only on loopback after a WAN flap.
+    # `uci delete` returns 1 when the option is already absent. That is the
+    # desired idempotent state, so it must not abort this block under `set -e`.
+    uci -q delete dhcp.@dnsmasq[0].interface || true
+    uci -q delete dhcp.@dnsmasq[0].listen_address || true
+    uci add_list dhcp.@dnsmasq[0].interface=transit
+    uci add_list dhcp.@dnsmasq[0].listen_address=127.0.0.1
+    uci add_list dhcp.@dnsmasq[0].listen_address=10.10.4.2
+    uci set dhcp.@dnsmasq[0].nonwildcard=1
+    uci set dhcp.@dnsmasq[0].localservice=0
+    uci commit dhcp
+    /etc/init.d/dnsmasq restart
+
+    # Routed lab clients legitimately arrive on transit with a source address
+    # from another lab subnet. Persist loose reverse-path filtering so the
+    # router remains valid after an LXD or WSL restart.
+    mkdir -p /etc/sysctl.d
+    cat >/etc/sysctl.d/99-lxc-lab-edge.conf <<EOF
+net.ipv4.conf.all.rp_filter=2
+net.ipv4.conf.default.rp_filter=2
+net.ipv4.conf.eth0.rp_filter=2
+net.ipv4.conf.eth1.rp_filter=2
+EOF
+    sysctl -p /etc/sysctl.d/99-lxc-lab-edge.conf >/dev/null
 
     cat >/etc/config/firewall <<EOF
 config defaults
@@ -645,6 +788,34 @@ EOF
     /etc/init.d/firewall restart
     sysctl -w net.ipv4.ip_forward=1 >/dev/null
   '
+}
+
+verify_wan_dns_path() {
+  local answer attempt recursive_answer tcp_answer
+  for attempt in $(seq 1 5); do
+    answer="$(lxc exec k3s-datacenter -- dig @10.10.4.2 +time=2 +tries=1 +short registry-1.docker.io A 2>/dev/null || true)"
+    tcp_answer="$(lxc exec k3s-datacenter -- dig +tcp @10.10.4.2 +time=2 +tries=1 +short registry-1.docker.io A 2>/dev/null || true)"
+    recursive_answer="$(lxc exec k3s-datacenter -- dig @10.10.2.53 +time=4 +tries=1 +short registry-1.docker.io A 2>/dev/null || true)"
+    if grep -Eq '^[0-9]+(\.[0-9]+){3}$' <<<"${answer}" \
+      && grep -Eq '^[0-9]+(\.[0-9]+){3}$' <<<"${tcp_answer}" \
+      && grep -Eq '^[0-9]+(\.[0-9]+){3}$' <<<"${recursive_answer}"; then
+      echo "WAN and recursive DNS paths ready (${answer##*$'\n'})."
+      return 0
+    fi
+    lxc exec router-edge -- ifup wan >/dev/null 2>&1 || true
+    lxc exec router-edge -- /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
+    lxc exec server-dns -- systemctl restart named >/dev/null 2>&1 || true
+    sleep 3
+  done
+
+  echo 'WAN DNS is unavailable from the datacenter path; collecting hop-by-hop diagnostics.' >&2
+  lxc exec router-edge -- nslookup www.terna.it 127.0.0.1 >&2 || true
+  lxc exec router-dmz -- nslookup registry-1.docker.io 10.10.4.2 >&2 || true
+  lxc exec k3s-datacenter -- ip route get 10.10.4.2 >&2 || true
+  lxc exec router-edge -- ip route get 10.10.3.10 >&2 || true
+  lxc exec router-edge -- busybox netstat -lnup >&2 || true
+  lxc exec router-edge -- logread -e dnsmasq >&2 || true
+  return 1
 }
 
 main() {
@@ -719,9 +890,7 @@ main() {
   init_container router-edge "${RESOLVED_OPENWRT_IMAGE}"
   configure_container_runtime router-edge openwrt-router
   attach_nic router-edge "${NET_TRANSIT}" eth0 10.10.4.2
-  if ! lxc_retry config device show router-edge | grep -q '^eth1:'; then
-    lxc_retry network attach lxdbr0 router-edge eth1 eth1
-  fi
+  attach_nic router-edge lxdbr0 eth1
 
   for container in \
     router-dipendenti router-datacenter router-dmz router-edge \
@@ -739,7 +908,13 @@ main() {
   configure_git_server
   configure_ansible_node
   configure_basic_ubuntu_nodes
+  verify_wan_dns_path
+  bash "${SCRIPT_DIR}/../terna-static-dr/bin/reconcile-lxc-lab.sh"
   remove_all_provisioning_nics
+
+  if [ "${LXC_LAB_HOST_DNS:-false}" = "true" ]; then
+    bash "${SCRIPT_DIR}/host-dns.sh" enable
+  fi
 
   lxc_retry list
   echo "LXC lab ready."

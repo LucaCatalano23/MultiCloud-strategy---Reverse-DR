@@ -1,0 +1,46 @@
+---
+- name: Activate the lab-only Terna static DR DNS zone
+  hosts: local
+  gather_facts: false
+  vars:
+    dns_node: server-dns
+    k3s_node: k3s-datacenter
+    dns_target_ip: 10.10.3.10
+    dns_ttl: 30
+    controller_state_dir: /var/lib/terna-static-dr
+  tasks:
+    - name: Freeze snapshots before the local DNS override
+      ansible.builtin.command:
+        argv: [lxc, exec, "{{ k3s_node }}", --, touch, /srv/terna-static-dr/static/dr-active]
+    - name: Render the authoritative lab zone locally
+      ansible.builtin.copy:
+        dest: "{{ controller_state_dir }}/db.terna.it"
+        mode: '0600'
+        content: |
+          $TTL {{ dns_ttl }}
+          @ IN SOA server-dns.azienda.lan. admin.azienda.lan. (
+            {{ lookup('pipe', 'date +%s') }} 30 15 604800 {{ dns_ttl }}
+          )
+          @ IN NS server-dns.azienda.lan.
+          @ IN A {{ dns_target_ip }}
+          www IN A {{ dns_target_ip }}
+    - name: Ensure the BIND zone directory exists
+      ansible.builtin.command:
+        argv: [lxc, exec, "{{ dns_node }}", --, install, -d, -m, '0755', /etc/bind/zones]
+    - name: Copy the validated zone file into server-dns
+      ansible.builtin.command:
+        argv: [lxc, file, push, "{{ controller_state_dir }}/db.terna.it", "{{ dns_node }}/etc/bind/zones/db.terna.it", --mode=0644, --uid=0, --gid=0]
+    - name: Register and validate the lab-only BIND zone
+      ansible.builtin.shell: |
+        set -euo pipefail
+        lxc exec {{ dns_node | quote }} -- bash -lc 'grep -q "zone \"terna.it\"" /etc/bind/named.conf.local || cat >>/etc/bind/named.conf.local <<"EOF"
+        zone "terna.it" {
+          type master;
+          file "/etc/bind/zones/db.terna.it";
+        };
+        EOF'
+        lxc exec {{ dns_node | quote }} -- named-checkconf
+        lxc exec {{ dns_node | quote }} -- named-checkzone terna.it /etc/bind/zones/db.terna.it
+        lxc exec {{ dns_node | quote }} -- systemctl reload named
+      args:
+        executable: /bin/bash

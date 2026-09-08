@@ -59,8 +59,43 @@ EOF
   exit 1
 fi
 
+migrate_legacy_literal_environment() {
+  # Le prime versioni del DR scrivevano queste variabili come `value:`. La
+  # versione corrente usa ConfigMap refs; il strategic-merge di Kubernetes non
+  # puo' passare direttamente da value a valueFrom, perche' nel patch
+  # intermedio entrambi risultano presenti. Rimuoviamo solo le chiavi migrate
+  # e solo a workload spenti; l'apply successivo le reinserisce atomiche.
+  local deployment
+  local variables
+  local replicas
+  local variable
+  local -a removals
+
+  while IFS='|' read -r deployment variables; do
+    [ -n "${deployment}" ] || continue
+    if ! exec_onprem kubectl -n helios-desk get "deployment/${deployment}" >/dev/null 2>&1; then
+      continue
+    fi
+    replicas="$(exec_onprem kubectl -n helios-desk get "deployment/${deployment}" -o jsonpath='{.spec.replicas}')"
+    if [ "${replicas:-0}" != "0" ]; then
+      echo "Refusing legacy environment migration for active deployment/${deployment}. Demote DR before deploying standby." >&2
+      return 1
+    fi
+    removals=()
+    for variable in ${variables}; do
+      removals+=("${variable}-")
+    done
+    exec_onprem kubectl -n helios-desk set env "deployment/${deployment}" "${removals[@]}"
+  done <<'EOF'
+helios-ticket-service|DR_ACTIVE OIDC_ISSUER_URL OIDC_AUDIENCE OIDC_JWKS_URL OIDC_ROLES_CLAIM OIDC_REQUIRED_ALGORITHMS
+helios-automation-service|DR_ACTIVE OIDC_ISSUER_URL OIDC_AUDIENCE OIDC_JWKS_URL OIDC_ROLES_CLAIM OIDC_REQUIRED_ALGORITHMS
+helios-bff|DR_ACTIVE SITE_MODE SITE_NAME IDENTITY_PROVIDER APPLICATION_PUBLIC_ORIGIN OIDC_ISSUER_URL OIDC_AUDIENCE OIDC_JWKS_URL OIDC_ROLES_CLAIM OIDC_REQUIRED_ALGORITHMS OIDC_SCOPES OIDC_CLIENT_ID OIDC_CLIENT_AUTH_METHOD OIDC_REDIRECT_URI OIDC_POST_LOGOUT_REDIRECT_URI OIDC_AUTHORIZATION_ENDPOINT OIDC_TOKEN_ENDPOINT OIDC_END_SESSION_ENDPOINT TICKET_SERVICE_URL AUTOMATION_SERVICE_URL
+EOF
+}
+
 apply_postgres_runtime_secret exec_onprem
 exec_onprem sh -lc "kubectl kustomize --load-restrictor=LoadRestrictionsNone /tmp/helpdesk-dr/manifests/kubernetes/onprem | kubectl apply -f -"
+migrate_legacy_literal_environment
 exec_onprem sh -lc "kubectl kustomize --load-restrictor=LoadRestrictionsNone /tmp/helpdesk-dr/infra/onprem | kubectl apply -f -"
 
 exec_onprem kubectl -n "${APP_NAMESPACE}" rollout status deployment/postgres --timeout=180s
@@ -74,5 +109,10 @@ for workload in "${helios_workloads[@]}"; do
   exec_onprem kubectl -n "${HELIOS_DR_NAMESPACE}" scale "deployment/${workload}" --replicas=0
 done
 
+# Inizializza anche il routing normale: senza questo passaggio una zona DNS
+# lasciata da una precedente demo puo' continuare a puntare cloud-k3s invece
+# del CNAME ALB configurato. Fallire qui e' sicuro: il controller non viene
+# armato finche' il primary non e' effettivamente pubblicato dal DNS del lab.
+set_primary_helpdesk_dns
 write_dr_state "primary"
 echo "On-prem standby deployed. Keycloak is warm; Helios application workloads remain at zero until promotion."

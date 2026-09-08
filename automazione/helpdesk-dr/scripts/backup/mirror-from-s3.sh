@@ -43,30 +43,75 @@ if ! command -v aws >/dev/null 2>&1; then
   echo "aws CLI not found on the coordinator; cannot mirror S3 backups." >&2
   exit 1
 fi
+export AWS_EC2_METADATA_DISABLED=true
+export AWS_DEFAULT_REGION="${AWS_REGION}"
+export AWS_PAGER=""
+
+# S3 path-style: nel lab l'endpoint virtual-host del bucket
+# (<bucket>.s3.<region>.amazonaws.com) non e' raggiungibile attraverso l'edge del
+# laboratorio, mentre l'endpoint regionale (s3.<region>.amazonaws.com/<bucket>)
+# risponde. `addressing_style` non ha un env var, quindi lo scriviamo in un config
+# temporaneo e ci puntiamo con AWS_CONFIG_FILE. BACKUP_S3_ADDRESSING_STYLE=virtual
+# ripristina il virtual-host se in un altro ambiente l'edge lo raggiunge.
+aws_config="$(mktemp)"
+trap 'rm -f "${aws_config}"' EXIT
+{
+  printf '[default]\n'
+  printf 'region = %s\n' "${AWS_REGION}"
+  printf 's3 =\n'
+  printf '    addressing_style = %s\n' "${BACKUP_S3_ADDRESSING_STYLE:-path}"
+} >"${aws_config}"
+export AWS_CONFIG_FILE="${aws_config}"
+
+# Timeout espliciti: un percorso S3 irraggiungibile fallisce in fretta invece di
+# tenere appeso il oneshot.
+aws_args=(--cli-connect-timeout 10 --cli-read-timeout 30)
+[ -n "${AWS_REGION:-}" ] && aws_args+=(--region "${AWS_REGION}")
 
 s3_prefix="${BACKUP_S3_PREFIX}"
 mirror_dir="${BACKUP_MIRROR_DIR}/${s3_prefix}"
 mkdir -p "${mirror_dir}"
 chmod 0700 "${mirror_dir}" 2>/dev/null || true
 
-region_args=()
-[ -n "${AWS_REGION:-}" ] && region_args=(--region "${AWS_REGION}")
-
 # 1) Elenca i dump su S3. Un fallimento qui interrompe SENZA prune: mirror intatto.
-if ! s3_listing="$(aws "${region_args[@]}" s3 ls \
-  "s3://${BACKUP_S3_BUCKET}/${s3_prefix}/" 2>/dev/null)"; then
-  echo "Cannot list s3://${BACKUP_S3_BUCKET}/${s3_prefix}/ (primary/network down?);" \
-    "mirror left untouched." >&2
+#    Lo stderr reale di aws (timeout, AccessDenied, DNS, bucket assente) finisce nel
+#    journal invece di essere silenziato: il fail non e' piu' un generico "down".
+s3_error_file="$(mktemp "$(runtime_dir)/s3-list-error.XXXXXX")"
+trap 'rm -f "${s3_error_file}"' EXIT
+
+if ! s3_listing="$(
+  aws "${region_args[@]}" \
+    s3api list-objects-v2 \
+    --bucket "${BACKUP_S3_BUCKET}" \
+    --prefix "${s3_prefix}/" \
+    --query "Contents[].Key" \
+    --output text \
+    --cli-connect-timeout 10 \
+    --cli-read-timeout 30 \
+    --no-cli-pager \
+    2>"${s3_error_file}"
+)"; then
+  echo "Cannot list s3://${BACKUP_S3_BUCKET}/${s3_prefix}/; mirror left untouched." >&2
+  cat "${s3_error_file}" >&2
   exit 1
 fi
 
-# I nomi sono <stamp>.dump con stamp UTC ordinabile lessicograficamente: i piu'
-# recenti sono in coda all'ordinamento crescente, quindi sort -r + head.
-mapfile -t newest < <(printf '%s\n' "${s3_listing}" \
-  | awk '{print $NF}' \
-  | grep -E '\.dump$' \
-  | sort -r \
-  | head -n "${retention}")
+rm -f "${s3_error_file}"
+trap - EXIT
+
+if [ -z "${s3_listing}" ] || [ "${s3_listing}" = "None" ]; then
+  echo "No backup objects found under s3://${BACKUP_S3_BUCKET}/${s3_prefix}/; mirror left untouched."
+  exit 0
+fi
+
+mapfile -t newest < <(
+  printf '%s\n' "${s3_listing}" |
+    tr '\t' '\n' |
+    sed "s#^${s3_prefix}/##" |
+    grep -E '^[0-9]{8}T[0-9]{6}Z\.dump$' |
+    sort -r |
+    head -n "${retention}"
+)
 
 if [ "${#newest[@]}" -eq 0 ]; then
   echo "No *.dump backups under s3://${BACKUP_S3_BUCKET}/${s3_prefix}/; nothing to mirror." >&2
@@ -82,9 +127,9 @@ for dump in "${newest[@]}"; do
     continue # gia' presente e integro
   fi
   tmp="$(mktemp -d "${mirror_dir}/.sync.XXXXXX")"
-  if aws "${region_args[@]}" s3 cp \
+  if aws "${aws_args[@]}" s3 cp \
       "s3://${BACKUP_S3_BUCKET}/${s3_prefix}/${dump}" "${tmp}/${dump}" --only-show-errors \
-    && aws "${region_args[@]}" s3 cp \
+    && aws "${aws_args[@]}" s3 cp \
       "s3://${BACKUP_S3_BUCKET}/${s3_prefix}/${dump}.sha256" "${tmp}/${dump}.sha256" --only-show-errors; then
     expected="$(awk 'NR==1{print $1}' "${tmp}/${dump}.sha256")"
     actual="$(sha256sum "${tmp}/${dump}" | awk '{print $1}')"

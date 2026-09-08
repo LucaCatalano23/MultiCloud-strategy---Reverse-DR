@@ -9,6 +9,9 @@ ConditionPathExists=/etc/helpdesk-dr/config.env
 Type=oneshot
 User=root
 WorkingDirectory=/opt/helpdesk-dr
+# /root e' read-only (ProtectHome/ProtectSystem=strict): aws vuole scrivere
+# ~/.aws e fallirebbe. HOME punta alla RuntimeDirectory scrivibile.
+Environment=HOME=/run/helpdesk-dr
 Environment=HELPDESK_DR_CONFIG_FILE=/etc/helpdesk-dr/config.env
 ExecStart=/usr/local/bin/helpdesk-dr backup/mirror-from-s3
 RuntimeDirectory=helpdesk-dr

@@ -11,6 +11,10 @@ StartLimitBurst=10
 Type=simple
 User=root
 WorkingDirectory=/opt/helpdesk-dr
+# ProtectHome/ProtectSystem=strict rendono /root read-only: aws, ansible e il
+# client lxc (snap) vogliono scrivere ~/.aws, ~/.ansible, ~/snap e fallirebbero
+# con warning "read-only file system". HOME punta alla RuntimeDirectory scrivibile.
+Environment=HOME=/run/helpdesk-dr
 Environment=HELPDESK_DR_CONFIG_FILE=/etc/helpdesk-dr/config.env
 Environment=ANSIBLE_LOCAL_TEMP=/run/helpdesk-dr/ansible-tmp
 Environment=ANSIBLE_REMOTE_TEMP=/run/helpdesk-dr/ansible-tmp

@@ -35,6 +35,11 @@ reti interne -> router-dmz -> lab-transit -> router-edge -> lxdbr0 -> Internet
 
 `router-edge` applica NAT solo verso `lxdbr0` e accetta forwarding solo da `transit` verso `wan`. La `wan` rifiuta nuove connessioni in ingresso, quindi Internet non puo iniziare connessioni verso la rete lab; sono consentite solo le risposte a connessioni originate dall'interno.
 
+`server-dns` inoltra le richieste ricorsive a `router-edge` (`10.10.4.2`), il
+quale usa il resolver ricevuto via DHCP sulla WAN. In questo modo il lab segue
+il DNS consentito dalla rete dell'host anche quando una VPN o una rete aziendale
+blocca le query dirette verso resolver pubblici come `1.1.1.1`.
+
 ## Prerequisiti WSL
 
 Usa Ubuntu su WSL con systemd abilitato. Verifica:
@@ -81,6 +86,50 @@ Verifica:
 lxc list
 bash healthcheck.sh
 ```
+
+Per usare `server-dns` anche sullo host WSL (quindi avere il failover locale
+`terna.it` anche nel browser/strumenti eseguiti sull'host), dopo il setup:
+
+```ini
+# /etc/wsl.conf: preservare eventuali altre sezioni gia presenti
+[boot]
+systemd=true
+
+[network]
+generateResolvConf=false
+```
+
+Dopo la modifica eseguire `wsl --shutdown` da PowerShell e riaprire WSL. La
+seconda opzione impedisce a WSL di sovrascrivere al riavvio il collegamento a
+`systemd-resolved` gestito dallo script. Quindi:
+
+```bash
+sudo bash host-dns.sh enable
+```
+
+È reversibile con `sudo bash host-dns.sh disable`. In alternativa, per
+applicarlo all'interno del provisioning: `sudo -E LXC_LAB_HOST_DNS=true bash setup.sh`.
+
+Lo script mantiene `10.255.255.254`, l'indirizzo predefinito del DNS tunneling
+WSL, come `FallbackDNS` di `systemd-resolved`. Quando si esegue `disable`, questo
+evita che il resolver rimanga senza alcun nameserver. Se in `.wslconfig` è stato
+personalizzato `dnsTunnelingIpAddress`, passare lo stesso valore tramite
+`WSL_DNS_TUNNEL_IP` sia a `enable` sia a `disable`.
+
+Il setup è riconciliativo: può essere rilanciato. Per Terna Static DR confronta
+il checksum dei manifest nel namespace `terna-static-dr` e quello del controller
+su `ansible-node`; se Deployment, controller e configurazione sono già corretti,
+salta l'applicazione/copia. Per usare una configurazione locale, crea
+`../terna-static-dr/config.lxc-lab.env` dal relativo esempio prima di lanciare
+`setup.sh`; il file resta fuori da Git.
+
+Su OpenWrt 24.10 in LXC il comando `/etc/init.d/network restart` può bloccarsi
+su `ubus call network.interface dump`. Il setup non usa quel percorso: salva la
+configurazione persistente in UCI e applica indirizzi e rotte al runtime tramite
+`ip`. Se un'esecuzione precedente si è interrotta lasciando i router in stato
+parziale, dopo aver aggiornato gli script è sufficiente rilanciare `bash
+setup.sh`; il reconcile Terna ripara anche il percorso interno senza riavviare
+globalmente la rete OpenWrt.
 
 Se un container non parte, raccogli subito la diagnostica:
 

@@ -19,6 +19,23 @@ source "${ROOT_DIR}/scripts/common/lib.sh"
 
 [ "$(read_dr_state)" = unknown ]
 
+# Il DNS autorevole del lab deve poter indicare il primario AWS con un CNAME
+# stabile dell'ALB, mentre il sito DR resta un A record verso Traefik on-prem.
+# Non usare gli IP risolti dall'ALB: AWS puo' cambiarli in qualsiasi momento.
+CLOUD_DNS_TARGET=k8s-helios-test.eu-south-1.elb.amazonaws.com
+primary_zone="$(render_primary_helpdesk_dns_zone)"
+grep -Fqx 'heliospoc.terna.it IN CNAME k8s-helios-test.eu-south-1.elb.amazonaws.com.' <<<"${primary_zone}"
+
+dr_zone="$(render_onprem_helpdesk_dns_zone)"
+grep -Fqx 'heliospoc.terna.it IN CNAME onprem-helpdesk.azienda.lan.' <<<"${dr_zone}"
+
+CLOUD_DNS_TARGET='invalid target'
+if render_primary_helpdesk_dns_zone >/dev/null 2>&1; then
+  echo 'An invalid cloud DNS target was accepted.' >&2
+  exit 1
+fi
+CLOUD_DNS_TARGET=k8s-helios-test.eu-south-1.elb.amazonaws.com
+
 CLOUD_PROBE_MODE=https
 CLOUD_TARGET_HOST=k8s-helios-test.eu-west-1.elb.amazonaws.com
 CLOUD_TARGET_PORT=443

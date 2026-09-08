@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh the Terna static DR origin source every 10 minutes
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=10min
+AccuracySec=5s
+Persistent=true
+Unit=terna-static-origin-fetch.service
+
+[Install]
+WantedBy=timers.target

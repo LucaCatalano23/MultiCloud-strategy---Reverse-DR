@@ -152,6 +152,9 @@ class OnPremManifestContractTest(unittest.TestCase):
         self.assertIn("name: bff-egress", self.rendered)
         self.assertIn("name: web-egress", self.rendered)
         self.assertIn("name: keycloak-postgres-ingress", self.rendered)
+        self.assertIn("name: identity-recovery-egress", self.rendered)
+        postgres_policy = (ROOT / "identity" / "postgres.yaml").read_text(encoding="utf-8")
+        self.assertIn("app.kubernetes.io/component: identity-recovery", postgres_policy)
         self.assertIn("kubernetes.io/metadata.name: lambda-dr", self.rendered)
         # Il Job effimero di migrazione schema (scripts/apply-migrations.sh) deve
         # avere una egress dedicata (DNS + PostgreSQL applicativo) sotto default-deny.
@@ -241,7 +244,13 @@ class RealmContractTest(unittest.TestCase):
         # so this still applies to every token it is issued.
         roles_scope = next(s for s in self.realm["clientScopes"] if s["name"] == "roles")
         mappers = {mapper["name"]: mapper for mapper in roles_scope["protocolMappers"]}
-        self.assertEqual("roles", mappers["roles"]["config"]["claim.name"])
+        roles_mapper = mappers["roles"]
+        self.assertEqual("oidc-usermodel-client-role-mapper", roles_mapper["protocolMapper"])
+        self.assertEqual("helios-api", roles_mapper["config"]["usermodel.clientRoleMapping.clientId"])
+        self.assertEqual("roles", roles_mapper["config"]["claim.name"])
+        self.assertEqual("true", roles_mapper["config"]["multivalued"])
+        self.assertEqual("true", roles_mapper["config"]["access.token.claim"])
+        self.assertEqual("true", roles_mapper["config"]["id.token.claim"])
         self.assertEqual(
             "${HELIOS_API_AUDIENCE}",
             mappers["api-audience"]["config"]["included.custom.audience"],
@@ -316,6 +325,39 @@ class ExistingDrIntegrationContractTest(unittest.TestCase):
         self.assertIn("--temporary", provisioner)
         for permission in EXPECTED_PERMISSIONS:
             self.assertIn(f"--rolename {permission}", provisioner)
+
+    def test_operator_provisioning_repairs_the_bff_token_contract(self) -> None:
+        provisioner = (
+            ROOT / "keycloak" / "provision" / "provision-dr-operator.sh"
+        ).read_text(encoding="utf-8")
+        runner = (ROOT / "scripts" / "provision-dr-operator.sh").read_text(
+            encoding="utf-8"
+        )
+
+        # Startup realm import is create-only. Provisioning must therefore
+        # repair these live-realm relations on every run, before assigning
+        # roles to the operator.
+        self.assertIn("default-client-scopes", provisioner)
+        self.assertIn("protocol-mappers/models", provisioner)
+        self.assertIn("scope-mappings/clients", provisioner)
+        self.assertIn("evaluate-scopes/scope-mappings", provisioner)
+        self.assertIn("generate-example-id-token", provisioner)
+        self.assertIn("generate-example-access-token", provisioner)
+        self.assertNotIn("awk", provisioner)
+        self.assertIn("CURRENT_STEP", provisioner)
+        self.assertIn("Provisioning step:", provisioner)
+        self.assertIn("Provisioning failed during", provisioner)
+        self.assertIn("mapper_update_file", provisioner)
+        self.assertIn('"id": "%s"', provisioner)
+        self.assertIn("create configmap", runner)
+        self.assertIn("helios-identity-provisioner", runner)
+        self.assertIn("--from-file", runner)
+        self.assertIn("Refreshing provisioner ConfigMap", runner)
+        self.assertIn("job-name=${JOB}", runner)
+        self.assertIn("--all-containers=true", runner)
+        self.assertIn('describe "job/${JOB}"', runner)
+        self.assertIn('logs deployment/keycloak', runner)
+        self.assertIn('--since=10m', runner)
 
 
 if __name__ == "__main__":

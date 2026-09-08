@@ -1,0 +1,6 @@
+[94272, Main Thread] WARNING: Failed to read portal settings: GDBus.Error:org.freedesktop.DBus.Error.UnknownMethod: No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop: 'glib warning', file toolkit/xre/nsSigHandlers.cpp:200
+
+(firefox_firefox:94272): Gdk-WARNING **: 10:08:42.325: Failed to read portal settings: GDBus.Error:org.freedesktop.DBus.Error.UnknownMethod: No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop
+[Parent 94272, Main Thread] WARNING: Failed to mkdir /home/demo-user/snap/firefox/8763/.config/ibus/bus: Not a directory: 'glib warning', file toolkit/xre/nsSigHandlers.cpp:200
+
+(firefox_firefox:94272): IBUS-WARNING **: 10:08:42.421: Failed to mkdir /home/demo-user/snap/firefox/8763/.config/ibus/bus: Not a directory
