@@ -56,7 +56,8 @@ K8S_NAMESPACE="helios-desk"
 # nella tabella dr_telemetry di PostgreSQL e non dipendono dal logging del cloud.
 
 # Percorso del repository, per build immagini e overlay Kubernetes.
-REPO_ROOT="${REPO_ROOT:-/path/to/repository}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="${REPO_ROOT:-$(cd "${SCRIPT_DIR}/../../../.." && pwd)}"
 
 # -----------------------------------------------------------------------------
 # §2 / §3 — Input esterni. Lo script NON crea questi valori.
@@ -95,7 +96,7 @@ ENTRA_API_SCOPE="${ENTRA_API_SCOPE:-api://11111111-1111-4111-8111-111111111111/a
 #    la password in modo interattivo.
 #  - BFF_KEY_PEM / BFF_CERT_PEM: i due PEM gia' separati.
 # Se BFF_PFX e' impostato ha precedenza sui due PEM.
-BFF_PFX="${BFF_PFX:-/mnt/c/Users/user/Desktop/cloud-app-dev-heliosbff-tlabpal.pfx}"
+BFF_PFX="${BFF_PFX:-${REPO_ROOT}/cloud-app-dev-heliosbff-tlabpal.pfx}"
 BFF_KEY_PEM="${BFF_KEY_PEM:-/tmp/bff-key.pem}"
 BFF_CERT_PEM="${BFF_CERT_PEM:-/tmp/bff-cert.pem}"
 

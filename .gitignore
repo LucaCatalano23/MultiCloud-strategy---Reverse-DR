@@ -22,6 +22,9 @@ coverage/
 *.tfvars
 *.pem
 *.key
+*.pfx
+*.p12
+cloud-app-dev-heliosbff-tlabpal.pfx
 playwright-report/
 test-results/
 automazione/lambda-dr/secrets/

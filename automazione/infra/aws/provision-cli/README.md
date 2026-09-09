@@ -45,7 +45,8 @@ export ENTRA_API_SCOPE=api://<api-client-id>/access_as_user
 # a) Hai un .pfx (PKCS#12, il formato tipico di Windows): passalo così com'è.
 #    s12 estrae chiave e certificato da solo, chiede la password in modo
 #    interattivo e distrugge i PEM temporanei a fine sezione.
-export BFF_PFX=/mnt/c/Users/user/Desktop/cloud-app-dev-heliosbff-tlabpal.pfx
+#    Di default cerca il file nella root del repository (stesso livello di .gitignore).
+export BFF_PFX="${REPO_ROOT}/cloud-app-dev-heliosbff-tlabpal.pfx"
 #
 # b) Hai già i due PEM separati (default /tmp/bff-key.pem, /tmp/bff-cert.pem):
 # export BFF_KEY_PEM=/percorso/bff-key.pem
